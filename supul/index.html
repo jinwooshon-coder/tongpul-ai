@@ -919,7 +919,7 @@ label{display:block;font-weight:700;font-size:15px;margin-bottom:8px;color:var(-
 // ══════════════════════════
 function getStudents(){return JSON.parse(localStorage.getItem('sp_students')||'[]');}
 function saveStudents(arr){localStorage.setItem('sp_students',JSON.stringify(arr));}
-function getStudent(name){return getStudents().find(s=>s.name===name)||null;}
+function getStudent(name){const n=normName(name);return getStudents().find(s=>normName(s.name)===n)||null;}
 function upsertStudent(st){
   const arr=getStudents();
   const idx=arr.findIndex(s=>s.name===st.name);
@@ -1237,15 +1237,19 @@ function loginStudent(name){
 }
 
 function registerStudent(){
-  const name=document.getElementById('reg-name').value.trim();
+  const raw=document.getElementById('reg-name').value;
+  const name=normName(raw);
   const code=document.getElementById('reg-code').value.trim();
   if(!name){showToast('이름을 입력해주세요 😊');return;}
   const saved=localStorage.getItem('sp_class_code')||DEFAULT_CLASS_CODE;
   if(code!==saved){showToast('학급 코드가 틀렸어요! 선생님께 다시 확인하세요 🙏');return;}
-  const existing=getStudent(name);
-  if(existing){
-    // 이미 있는 학생이면 그냥 로그인
-    loginStudent(name);return;
+  // 정규화된 이름으로 중복 확인 (공백 무시)
+  const students=getStudents();
+  const duplicate=students.find(s=>normName(s.name)===name);
+  if(duplicate){
+    showToast(`${duplicate.name} 학생, 환영해요! 🎉`);
+    setTimeout(()=>loginStudent(duplicate.name),800);
+    return;
   }
   upsertStudent({name,grade:3,stars:0,registeredAt:Date.now()});
   showToast(`${name} 학생, 환영해요! 🎉`);
@@ -1961,6 +1965,110 @@ function submitDraw(){
   const dataURL=canvas.toDataURL('image/png');
   closeDrawCanvas();
   processImageData(dataURL,'image/png');
+}
+
+
+// ══════════════════════════
+//  중복 이름 정규화 헬퍼
+// ══════════════════════════
+function normName(n){return (n||"").replace(/\s+/g," ").trim();}
+
+// ══════════════════════════
+//  이미지 처리 (카메라/파일/그리기)
+// ══════════════════════════
+function handleCam(input){
+  const file=input&&input.files&&input.files[0];
+  if(!file){return;}
+  const reader=new FileReader();
+  reader.onload=ev=>processImageData(ev.target.result,file.type);
+  reader.readAsDataURL(file);
+  input.value="";
+}
+async function processImageData(dataURL,mimeType){
+  if(!S.key){showToast("선생님이 API 키를 아직 입력 안 하셨어요 ⚙️");goSettings();return;}
+  const base64=dataURL.split(",")[1];
+  const mediaType=mimeType&&mimeType.startsWith("image/")?mimeType:"image/png";
+  setLoad(true,"사진을 읽고 있어요!","수풀이가 문제를 확인하고 있어요 📷");
+  try{
+    const res=await fetch("https://api.anthropic.com/v1/messages",{
+      method:"POST",
+      headers:{"Content-Type":"application/json","x-api-key":S.key,
+        "anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+      body:JSON.stringify({model:"claude-opus-4-6",max_tokens:2800,
+        system:buildSys("concept"),
+        messages:[{role:"user",content:[
+          {type:"image",source:{type:"base64",media_type:mediaType,data:base64}},
+          {type:"text",text:`${S.grade}학년 학생이 사진 속 수학 문제를 이해 못 하고 있어요. 파트1(설명 HTML)과 파트2(유튜브 JSON) 두 파트를 반드시 모두 작성해주세요.`}
+        ]}]})
+    });
+    const data=await res.json();
+    if(data.error) throw new Error(data.error.message);
+    const prob="(사진 문제)";
+    S.prob=prob;S.htype="concept";
+    document.getElementById("exp-badge").textContent=`${S.grade}학년`;
+    processRes(data.content[0].text,"concept",prob);
+  }catch(e){setLoad(false);showToast("오류: "+e.message);}
+}
+
+// ══════════════════════════
+//  그리기 캔버스 함수
+// ══════════════════════════
+function clearCanvas(){
+  const canvas=document.getElementById("draw-canvas");
+  if(canvas&&_drawCtx) _drawCtx.clearRect(0,0,canvas.width,canvas.height);
+}
+function submitDrawing(){submitDraw();}
+
+// ══════════════════════════
+//  리포트 모달
+// ══════════════════════════
+function openReport(){
+  const modal=document.getElementById("report-modal");
+  if(!modal)return;
+  modal.classList.add("show");
+  const box=document.getElementById("report-text");
+  if(!box)return;
+  const name=S.studentName||"학생";
+  const st=getStudent(name);
+  const stars=st?st.stars||0:0;
+  const hist=getHist(name);
+  const today=new Date().toLocaleDateString("ko-KR",{year:"numeric",month:"long",day:"numeric"});
+  const recentProblems=hist.slice(0,5).map((r,i)=>`${i+1}. ${r.problem||"(사진 문제)"}`).join("\n");
+  const totalCount=hist.length;
+  const report=`📋 수풀AI 학습 리포트\n${today}\n\n👦 학생 이름: ${name}\n⭐ 획득 별: ${stars}개\n📚 총 학습 횟수: ${totalCount}회\n\n[최근 학습 문제]\n${recentProblems||"아직 학습 기록이 없어요"}\n\n수풀AI와 함께 열심히 공부하고 있어요! 😊\n수풀AI — jinwooshon-coder.github.io/tongpul-ai/supul/`;
+  box.textContent=report;
+}
+function closeReport(e){
+  if(e&&e.target!==document.getElementById("report-modal"))return;
+  document.getElementById("report-modal").classList.remove("show");
+}
+function copyReport(){
+  const text=document.getElementById("report-text").textContent;
+  if(navigator.clipboard){
+    navigator.clipboard.writeText(text).then(()=>showToast("📋 복사 완료! 카카오톡에 붙여넣기 하세요 😊"));
+  }else{
+    const ta=document.createElement("textarea");
+    ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand("copy");document.body.removeChild(ta);
+    showToast("📋 복사 완료! 카카오톡에 붙여넣기 하세요 😊");
+  }
+}
+
+// ══════════════════════════
+//  별 정보 팝업
+// ══════════════════════════
+function showStarInfo(){
+  const st=S.studentName?getStudent(S.studentName):null;
+  const stars=st?st.stars||0:0;
+  const milestones=[
+    {n:5,label:"🌱 새싹"},{n:10,label:"🌿 잎새"},{n:20,label:"🌳 나무"},
+    {n:30,label:"⭐ 별님"},{n:50,label:"🌟 빛별"},{n:100,label:"🏆 챔피언"}
+  ];
+  const next=milestones.find(m=>m.n>stars);
+  const badge=milestones.filter(m=>m.n<=stars).pop();
+  const msg=badge
+    ?`현재 뱃지: ${badge.label}\n⭐ ${stars}개 획득!\n${next?"다음 뱃지까지 "+(next.n-stars)+"개 남았어요 🎯":"🏆 모든 뱃지 달성!"}`
+    :`⭐ 아직 별이 없어요.\n문제를 풀면 별을 받아요! 🌟\n첫 뱃지(${milestones[0].label})까지 ${milestones[0].n}개!`;
+  showToast(msg);
 }
 
 // ══════════════════════════
