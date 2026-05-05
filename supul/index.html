@@ -1263,6 +1263,10 @@ function showScreen(id){
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
   window.scrollTo(0,0);
+  // 화면 전환 시 토스트·유튜브 모달 강제 닫기
+  const toast=document.getElementById('toast');
+  if(toast){clearTimeout(_toastTimer);toast.classList.remove('show');}
+  closeYTModal();
 }
 function goTab(tab){
   if(tab==='home'){showScreen('s-main');setNav('home');}
@@ -1639,7 +1643,9 @@ function renderYT(searches){
   }).join('');
 }
 function openYT(enc,idx){
-  window.open(`https://www.youtube.com/results?search_query=${enc}`,'_blank');
+  // 인앱 유튜브 모달로 재생
+  openYTModal(enc, idx);
+  // 시청 표시
   const el=document.getElementById(`ytw-${idx}`);
   if(el) el.innerHTML=`<span class="yt-watched">✅ 영상 찾아봤어요!</span>`;
   if(S.curRecord){
@@ -1647,10 +1653,53 @@ function openYT(enc,idx){
     const rec=hist.find(r=>r.id===S.curRecord.id);
     if(rec){if(!rec.ytClicked)rec.ytClicked=[];if(!rec.ytClicked.includes(idx))rec.ytClicked.push(idx);saveHistData(hist,S.studentName);}
   }
-  showToast('유튜브가 열렸어요! 영상을 찾아보세요 📺');
   // ⭐ 유튜브 첫 클릭 시 보너스 별
   if(S.curRecord&&(S.curRecord.ytClicked||[]).length===1){
-    setTimeout(()=> awardStar(1, '유튜브 영상으로도 공부했어요! 📺'), 1500);
+    setTimeout(()=>awardStar(1,'유튜브 영상으로도 공부했어요! 📺'),1500);
+  }
+}
+function openYTModal(enc, idx){
+  let modal=document.getElementById('yt-player-modal');
+  if(!modal){
+    modal=document.createElement('div');
+    modal.id='yt-player-modal';
+    modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:900;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:12px;';
+    modal.innerHTML=`
+      <div style="width:100%;max-width:640px;background:#111;border-radius:20px;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,.6);">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;background:#1a1a1a;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span style="color:#FF0000;font-size:22px;">▶</span>
+            <span id="yt-modal-title" style="color:white;font-size:14px;font-weight:700;max-width:380px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+          </div>
+          <button onclick="closeYTModal()" style="background:none;border:none;color:white;font-size:22px;cursor:pointer;padding:4px 8px;line-height:1;">✕</button>
+        </div>
+        <div style="position:relative;width:100%;padding-top:56.25%;background:#000;">
+          <iframe id="yt-iframe" style="position:absolute;inset:0;width:100%;height:100%;border:none;" allowfullscreen allow="accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture"></iframe>
+        </div>
+        <div style="padding:14px 18px;background:#1a1a1a;display:flex;gap:10px;">
+          <a id="yt-external-link" href="#" target="_blank" style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px;background:#FF0000;color:white;border-radius:12px;padding:11px;font-size:13px;font-weight:700;text-decoration:none;">🔗 유튜브에서 열기</a>
+          <button onclick="closeYTModal()" style="flex:1;background:#333;border:none;color:white;border-radius:12px;padding:11px;font-size:13px;font-weight:700;cursor:pointer;">닫기</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', e=>{if(e.target===modal) closeYTModal();});
+  }
+  // 검색어 설정 (listType=search 방식)
+  const keyword = decodeURIComponent(enc);
+  document.getElementById('yt-modal-title').textContent = keyword;
+  const iframe = document.getElementById('yt-iframe');
+  iframe.src = `https://www.youtube.com/embed?listType=search&list=${enc}&hl=ko&cc_lang_pref=ko`;
+  const extLink = document.getElementById('yt-external-link');
+  extLink.href = `https://www.youtube.com/results?search_query=${enc}`;
+  modal.style.display = 'flex';
+}
+function closeYTModal(){
+  const modal=document.getElementById('yt-player-modal');
+  if(modal){
+    modal.style.display='none';
+    // iframe 정지
+    const iframe=document.getElementById('yt-iframe');
+    if(iframe) iframe.src='';
   }
 }
 
