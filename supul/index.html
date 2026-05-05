@@ -1680,6 +1680,27 @@ function getDue(){
   const now=Date.now();
   return getHist(S.studentName).reduce((c,r)=>c+((r.reviews||[]).filter(rv=>!rv.done&&rv.due<=now).length),0);
 }
+function updateStarDisplay(){
+  const st=S.studentName?getStudent(S.studentName):null;
+  const stars=st?st.stars||0:0;
+  const el=document.getElementById('star-display');
+  if(el) el.textContent=`⭐ ${stars}`;
+}
+function renderSelectPanel(){
+  const students=getStudents();
+  const el=document.getElementById('student-btns');
+  if(!el)return;
+  const emojis=['🐣','🐥','🐇','🦊','🦅','🦁','🌟','🌈','🍀','🎯'];
+  el.innerHTML=students.map((s,i)=>`
+    <button onclick="loginStudent('${s.name}')" style="display:flex;align-items:center;gap:14px;background:white;border:3px solid var(--green-lt);border-radius:20px;padding:14px 18px;font-family:inherit;cursor:pointer;transition:all .2s;width:100%;text-align:left;" onmouseover="this.style.borderColor='var(--green)';this.style.background='var(--mint)'" onmouseout="this.style.borderColor='var(--green-lt)';this.style.background='white'">
+      <span style="font-size:32px;">${emojis[i%emojis.length]}</span>
+      <div>
+        <div style="font-size:17px;font-weight:900;color:var(--deep);">${s.name}</div>
+        <div style="font-size:12px;color:var(--mid);">${s.grade||3}학년 · ⭐ ${s.stars||0}개</div>
+      </div>
+    </button>`).join('');
+}
+
 function updateBadge(){
   const c=getDue();
   const b=document.getElementById('badge-rev');
