@@ -280,6 +280,61 @@ label{display:block;font-weight:700;font-size:15px;margin-bottom:8px;color:var(-
 ::-webkit-scrollbar{width:6px;}
 ::-webkit-scrollbar-thumb{background:var(--green-lt);border-radius:3px;}
 </style>
+<!-- Firebase SDK -->
+<script type="module">
+// 수풀AI Firebase 공유 캐시 — Firestore 연동
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+import { getFirestore, doc, getDoc, setDoc, updateDoc, increment, serverTimestamp }
+  from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+
+const _fbConfig = {
+  apiKey: "AIzaSyCwCaAu9RflEQo_oa1OnLPXdbC92dTOGyk",
+  authDomain: "supul-ai.firebaseapp.com",
+  projectId: "supul-ai",
+  storageBucket: "supul-ai.firebasestorage.app",
+  messagingSenderId: "970867416771",
+  appId: "1:970867416771:web:4d311b7fe2bcc94362cc76"
+};
+const _fbApp = initializeApp(_fbConfig);
+const _db = getFirestore(_fbApp);
+
+// 캐시 키 생성 (학년 + 문제 + 유형)
+function _cacheKey(grade, prob, htype){
+  const normalized = prob.replace(/\s+/g,' ').trim().slice(0,80);
+  return `${grade}_${htype}_${normalized}`;
+}
+
+// 캐시 조회
+window._fbGetCache = async function(grade, prob, htype){
+  try{
+    const key = _cacheKey(grade, prob, htype);
+    const ref = doc(_db, 'problems', key);
+    const snap = await getDoc(ref);
+    if(snap.exists()){
+      await updateDoc(ref, { askCount: increment(1), lastAsked: serverTimestamp() });
+      return snap.data();
+    }
+  }catch(e){ console.warn('캐시 조회 실패:', e.message); }
+  return null;
+};
+
+// 캐시 저장
+window._fbSaveCache = async function(grade, prob, htype, expHTML, ytSearches, concept){
+  try{
+    const key = _cacheKey(grade, prob, htype);
+    const ref = doc(_db, 'problems', key);
+    await setDoc(ref, {
+      grade, problem: prob, htype, concept,
+      expHTML, ytSearches: ytSearches||[],
+      askCount: 1,
+      savedAt: serverTimestamp(),
+      lastAsked: serverTimestamp()
+    }, { merge: true });
+  }catch(e){ console.warn('캐시 저장 실패:', e.message); }
+};
+
+console.log('✅ Firebase Firestore 연결 완료');
+</script>
 </head>
 <body>
 
@@ -1442,8 +1497,24 @@ async function callClaude(prob,htype){
     goSettings();
     return;
   }
-  const[m,s]=LMSGS[htype]||LMSGS.concept;
-  setLoad(true,m,s);
+  // ── 캐시 먼저 확인 ──
+  if(window._fbGetCache){
+    const[m,s]=LMSGS[htype]||LMSGS.concept;
+    setLoad(true,'저장된 자료 찾는 중...','같은 문제를 이미 배웠는지 확인해요 🔍');
+    const cached = await window._fbGetCache(S.grade, prob, htype);
+    if(cached && cached.expHTML){
+      setLoad(false);
+      showToast('📚 저장된 자료로 바로 보여줘요!');
+      const record=saveHist({grade:S.grade,concept:cached.concept||prob.slice(0,20),problem:prob,htype,ytSearches:cached.ytSearches||[],expHTML:cached.expHTML});
+      S.curRecord=record;
+      renderExp(cached.expHTML,htype,cached.ytSearches||[]);
+      return;
+    }
+    setLoad(true,m,s);
+  } else {
+    const[m,s]=LMSGS[htype]||LMSGS.concept;
+    setLoad(true,m,s);
+  }
   try{
     const res=await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
@@ -1532,6 +1603,8 @@ function processRes(text,htype,prob){
   const concept=conM?conM[1].replace(/[🎨📝💡🔍🌿⭐]/g,'').trim():prob.slice(0,20);
   const record=saveHist({grade:S.grade,concept,problem:prob,htype,ytSearches,expHTML});
   S.curRecord=record;
+  // Firestore 캐시 저장 (백그라운드)
+  if(window._fbSaveCache) window._fbSaveCache(S.grade,prob,htype,expHTML,ytSearches,concept);
   renderExp(expHTML,htype,ytSearches);
   setLoad(false);
   // ⭐ 별 자동 지급
