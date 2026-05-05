@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>통합풀이 AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+:root {
+  --teal:    #6eb5a6;
+  --teal-lt: #b0cfc8;
+  --mint:    #e9f5f2;
+  --deep:    #586e69;
+  --sage:    #dfe6d3;
+  --khaki:   #dbd2a4;
+  --camel:   #ad9d82;
+  --mauve:   #b2a7b8;
+  --navy:    #37334f;
+  --black:   #2a2e2c;
+  --mid:     #697870;
+  --gray:    #c4c4c4;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+html,body{height:100%;font-family:'Noto Sans KR',sans-serif;background:var(--mint);color:var(--black);overflow-x:hidden;}
+.bg{position:fixed;inset:0;pointer-events:none;z-index:0;overflow:hidden;}
+.bg span{position:absolute;border-radius:50%;opacity:.1;}
+.bg .b1{width:300px;height:300px;background:var(--teal);top:-80px;right:-80px;animation:fl 7s ease-in-out infinite;}
+.bg .b2{width:200px;height:200px;background:var(--camel);bottom:60px;left:-60px;animation:fl 9s ease-in-out infinite reverse;}
+.bg .b3{width:140px;height:140px;background:var(--mauve);top:45%;right:5%;animation:fl 8s ease-in-out infinite;}
+@keyframes fl{0%,100%{transform:translateY(0);}50%{transform:translateY(-20px);}}
+.wrap{position:relative;z-index:1;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:0 20px 60px;}
+.header{width:100%;max-width:760px;display:flex;align-items:center;justify-content:space-between;padding:24px 0 0;}
+.logo{display:flex;align-items:center;gap:12px;}
+.logo-icon{width:48px;height:48px;background:var(--teal);border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:26px;box-shadow:0 4px 14px rgba(110,181,166,.35);}
+.logo-text{font-size:22px;font-weight:900;color:var(--deep);line-height:1.2;}
+.logo-sub{font-size:12px;color:var(--mid);font-weight:500;}
+.header-right{display:flex;gap:8px;}
+.hbtn{background:white;border:2px solid var(--sage);border-radius:14px;padding:8px 14px;font-family:inherit;font-size:13px;font-weight:700;color:var(--deep);cursor:pointer;transition:all .2s;}
+.hbtn:hover{background:var(--sage);}
+.hero{width:100%;max-width:760px;text-align:center;padding:48px 0 36px;}
+.hero-badge{display:inline-flex;align-items:center;gap:6px;background:white;border:2px solid var(--teal-lt);border-radius:20px;padding:6px 16px;font-size:12px;font-weight:700;color:var(--deep);margin-bottom:20px;}
+.hero-title{font-size:clamp(28px,6vw,48px);font-weight:900;color:var(--black);line-height:1.2;margin-bottom:14px;}
+.hero-title span{color:var(--teal);}
+.hero-desc{font-size:clamp(14px,3vw,17px);color:var(--mid);line-height:1.7;max-width:500px;margin:0 auto;}
+.subject-grid{width:100%;max-width:760px;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:18px;margin-bottom:40px;}
+.subject-card{background:white;border-radius:24px;padding:28px 24px;cursor:pointer;transition:all .25s;border:2px solid transparent;box-shadow:0 4px 20px rgba(0,0,0,.07);text-decoration:none;display:flex;flex-direction:column;align-items:center;text-align:center;position:relative;overflow:hidden;}
+.subject-card::before{content:'';position:absolute;inset:0;opacity:0;transition:opacity .25s;}
+.subject-card:hover{transform:translateY(-6px);box-shadow:0 12px 36px rgba(0,0,0,.13);}
+.subject-card.active:hover{border-color:var(--card-color);}
+.card-supul{--card-color:#6eb5a6;}
+.card-supul::before{background:linear-gradient(135deg,#e9f5f2,#b0cfc8);}
+.card-supul:hover::before{opacity:.4;}
+.card-supul:hover{border-color:#6eb5a6;}
+.card-yeongpul{--card-color:#ad9d82;}
+.card-yeongpul::before{background:linear-gradient(135deg,#f5f0e8,#dbd2a4);}
+.card-yeongpul:hover::before{opacity:.4;}
+.card-yeongpul:hover{border-color:#ad9d82;}
+.card-gwapul{--card-color:#b2a7b8;}
+.card-gwapul::before{background:linear-gradient(135deg,#f0edf4,#b2a7b8);}
+.card-gwapul:hover::before{opacity:.4;}
+.card-gwapul:hover{border-color:#b2a7b8;}
+.card-coming{opacity:.55;cursor:not-allowed;}
+.card-coming:hover{transform:none;box-shadow:0 4px 20px rgba(0,0,0,.07);}
+.card-em{font-size:52px;margin-bottom:14px;position:relative;z-index:1;}
+.card-name{font-size:20px;font-weight:900;color:var(--black);margin-bottom:6px;position:relative;z-index:1;}
+.card-desc{font-size:13px;color:var(--mid);line-height:1.5;position:relative;z-index:1;}
+.card-badge{display:inline-flex;align-items:center;gap:4px;margin-top:12px;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:700;position:relative;z-index:1;}
+.badge-open{background:var(--teal);color:white;}
+.badge-coming{background:var(--sage);color:var(--mid);}
+.card-arrow{position:absolute;bottom:20px;right:20px;width:32px;height:32px;background:var(--card-color);border-radius:50%;display:flex;align-items:center;justify-content:center;opacity:0;transform:scale(.7);transition:all .25s;z-index:1;}
+.subject-card.active:hover .card-arrow{opacity:1;transform:scale(1);}
+.feature-section{width:100%;max-width:760px;margin-bottom:40px;}
+.section-title{font-size:18px;font-weight:900;color:var(--deep);margin-bottom:16px;text-align:center;}
+.feature-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;}
+.feature-card{background:white;border-radius:18px;padding:20px 16px;text-align:center;border:2px solid var(--sage);}
+.feature-em{font-size:28px;margin-bottom:8px;}
+.feature-title{font-size:13px;font-weight:900;color:var(--deep);margin-bottom:4px;}
+.feature-desc{font-size:12px;color:var(--mid);line-height:1.5;}
+.footer{width:100%;max-width:760px;text-align:center;padding:24px 0 0;border-top:2px solid var(--sage);}
+.footer-logo{font-size:15px;font-weight:900;color:var(--deep);margin-bottom:6px;}
+.footer-desc{font-size:12px;color:var(--mid);}
+@media(max-width:480px){
+  .subject-grid{grid-template-columns:1fr 1fr;}
+  .card-supul{grid-column:1/-1;}
+  .hero{padding:32px 0 24px;}
+}
+</style>
+</head>
+<body>
+<div class="bg">
+  <span class="b1"></span>
+  <span class="b2"></span>
+  <span class="b3"></span>
+</div>
+<div class="wrap">
+  <header class="header">
+    <div class="logo">
+      <div class="logo-icon">🌿</div>
+      <div>
+        <div class="logo-text">통합풀이 AI</div>
+        <div class="logo-sub">연플래닝 학습 도우미</div>
+      </div>
+    </div>
+    <div class="header-right">
+      <button class="hbtn" onclick="location.href='#subjects'">과목 선택</button>
+    </div>
+  </header>
+  <section class="hero">
+    <div class="hero-badge">🤖 AI 학습 도우미 · 연플래닝</div>
+    <h1 class="hero-title">어려운 문제,<br><span>AI가 쉽게</span> 풀어드려요</h1>
+    <p class="hero-desc">수학·영어·과학 모든 과목을 사진 한 장으로 해결!<br>학년에 맞는 설명으로 이해가 쏙쏙 돼요 😊</p>
+  </section>
+  <section class="subject-grid" id="subjects">
+    <a class="subject-card card-supul active" href="supul/index.html">
+      <div class="card-em">🌿</div>
+      <div class="card-name">수풀AI</div>
+      <div class="card-desc">수학 문제를 사진으로 찍으면<br>AI가 단계별로 설명해요</div>
+      <div class="card-badge badge-open">✅ 지금 사용 가능</div>
+      <div class="card-arrow">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+      </div>
+    </a>
+    <div class="subject-card card-yeongpul card-coming">
+      <div class="card-em">📖</div>
+      <div class="card-name">영풀AI</div>
+      <div class="card-desc">영어 독해·문법·단어를<br>AI가 쉽게 설명해요</div>
+      <div class="card-badge badge-coming">🔜 준비 중</div>
+    </div>
+    <div class="subject-card card-gwapul card-coming">
+      <div class="card-em">🔬</div>
+      <div class="card-name">과풀AI</div>
+      <div class="card-desc">과학 개념·실험·공식을<br>AI가 재미있게 알려줘요</div>
+      <div class="card-badge badge-coming">🔜 준비 중</div>
+    </div>
+  </section>
+  <section class="feature-section">
+    <div class="section-title">왜 통합풀이 AI인가요?</div>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="feature-em">📸</div>
+        <div class="feature-title">사진으로 입력</div>
+        <div class="feature-desc">문제를 찍거나 그려서 바로 질문하세요</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-em">🎯</div>
+        <div class="feature-title">학년 맞춤 설명</div>
+        <div class="feature-desc">1학년부터 6학년까지 눈높이에 맞게</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-em">⭐</div>
+        <div class="feature-title">별 모으기</div>
+        <div class="feature-desc">문제를 풀면 별이 쌓여요!</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-em">📺</div>
+        <div class="feature-title">유튜브 연계</div>
+        <div class="feature-desc">관련 영상으로 더 깊게 이해해요</div>
+      </div>
+    </div>
+  </section>
+  <footer class="footer">
+    <div class="footer-logo">🌿 통합풀이 AI · 연플래닝</div>
+    <div class="footer-desc">울산 연플래닝 학원이 만든 AI 학습 도우미입니다</div>
+  </footer>
+</div>
+</body>
+</html>
