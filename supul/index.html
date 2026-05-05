@@ -932,8 +932,10 @@ function upsertStudent(st){
 //  ↓ 아래 숫자를 원하는 6자리로 바꾸세요
 // ══════════════════════════
 const DEFAULT_ADMIN_CODE = '240505'; // ← 연소사님이 직접 변경 가능
+const DEFAULT_CLASS_CODE = '456789';  // ← 기본 학급 코드 (선생님 설정화면에서 변경 가능)
 
 function getAdminCode(){ return localStorage.getItem('sp_admin_code') || DEFAULT_ADMIN_CODE; }
+function getClassCode(){ return localStorage.getItem('sp_class_code') || DEFAULT_CLASS_CODE; }
 
 // ── 관리자 인증 ──
 function openAdminAuth(){
@@ -963,7 +965,7 @@ function openAdminPanel(){
   document.getElementById('admin-key-status').textContent=k?`✅ API 키 등록됨 (${k.slice(0,12)}...)`:'⚠️ API 키 없음';
   document.getElementById('admin-key-status').style.color=k?'#2d7a4f':'#dc2626';
   // 선생님 코드 현황
-  const code=localStorage.getItem('sp_class_code')||'(미설정)';
+  const code=getClassCode();
   document.getElementById('admin-teacher-info').innerHTML=`
     <div style="background:var(--mint);border-radius:14px;padding:14px;">
       <div style="font-size:13px;color:var(--mid);margin-bottom:4px;">현재 학급 코드</div>
@@ -1238,8 +1240,7 @@ function registerStudent(){
   const name=document.getElementById('reg-name').value.trim();
   const code=document.getElementById('reg-code').value.trim();
   if(!name){showToast('이름을 입력해주세요 😊');return;}
-  const saved=localStorage.getItem('sp_class_code')||'';
-  if(!saved){showToast('선생님이 아직 학급 코드를 설정하지 않았어요. 선생님께 문의하세요!');return;}
+  const saved=localStorage.getItem('sp_class_code')||DEFAULT_CLASS_CODE;
   if(code!==saved){showToast('학급 코드가 틀렸어요! 선생님께 다시 확인하세요 🙏');return;}
   const existing=getStudent(name);
   if(existing){
