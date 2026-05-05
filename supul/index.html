@@ -3,6 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<link rel="manifest" href="../manifest.json">
+<meta name="theme-color" content="#6eb5a6">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="수풀AI">
+<link rel="apple-touch-icon" href="../icon-192.png">
 <title>수풀AI – 통합풀이 AI</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -757,6 +763,20 @@ label{display:block;font-weight:700;font-size:15px;margin-bottom:8px;color:var(-
       <div class="sl">👨‍👩‍👧‍👦 등록된 학생</div>
       <div id="student-list-admin" style="margin-top:10px;"></div>
       <button class="btn btn-ghost" onclick="renderStudentAdmin()" style="margin-top:10px;font-size:14px;">🔄 새로고침</button>
+    </div>
+
+    <!-- QR 코드 + 앱 설치 -->
+    <div class="card" style="text-align:center;">
+      <div class="sl" style="text-align:left;">📱 공유 & 설치</div>
+      <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;">
+        <button onclick="showQR()" style="flex:1;min-width:120px;background:var(--green);border:none;border-radius:14px;padding:12px 16px;font-family:inherit;font-size:14px;font-weight:700;color:white;cursor:pointer;">
+          📷 학생 QR 코드
+        </button>
+        <button id="pwa-install-btn" onclick="installPWA()" style="flex:1;min-width:120px;display:none;background:var(--deep);border:none;border-radius:14px;padding:12px 16px;font-family:inherit;font-size:14px;font-weight:700;color:white;cursor:pointer;">
+          💾 이 기기에 앱 설치
+        </button>
+      </div>
+      <div style="font-size:11px;color:var(--mid);margin-top:10px;">QR 코드로 학생들이 바로 접속할 수 있어요</div>
     </div>
 
     <div class="card" style="text-align:center;">
@@ -1919,6 +1939,34 @@ function submitDraw(){
   const dataURL=canvas.toDataURL('image/png');
   closeDrawCanvas();
   processImageData(dataURL,'image/png');
+}
+
+// ══════════════════════════
+//  PWA 설치
+// ══════════════════════════
+let _deferredInstallPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  _deferredInstallPrompt = e;
+  const btn = document.getElementById('pwa-install-btn');
+  if (btn) btn.style.display = 'flex';
+});
+window.addEventListener('appinstalled', () => {
+  _deferredInstallPrompt = null;
+  const btn = document.getElementById('pwa-install-btn');
+  if (btn) btn.style.display = 'none';
+  showToast('✅ 앱이 설치되었어요!');
+});
+function installPWA() {
+  if (!_deferredInstallPrompt) {
+    showToast('이미 설치됐거나 이 브라우저에서는 지원하지 않아요');
+    return;
+  }
+  _deferredInstallPrompt.prompt();
+  _deferredInstallPrompt.userChoice.then(choice => {
+    if (choice.outcome === 'accepted') showToast('✅ 설치 완료!');
+    _deferredInstallPrompt = null;
+  });
 }
 
 // ══════════════════════════

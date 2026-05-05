@@ -1,0 +1,19 @@
+{
+  "name": "수풀AI — 수학 학습 도우미",
+  "short_name": "수풀AI",
+  "description": "수풀이와 함께하는 AI 수학 학습",
+  "start_url": "/tongpul-ai/supul/",
+  "scope": "/tongpul-ai/",
+  "display": "standalone",
+  "background_color": "#e9f5f2",
+  "theme_color": "#6eb5a6",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='32' fill='%236eb5a6'/><text y='140' x='96' text-anchor='middle' font-size='120'>🌱</text></svg>",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
