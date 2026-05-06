@@ -279,6 +279,36 @@ label{display:block;font-weight:700;font-size:15px;margin-bottom:8px;color:var(-
 .stars{color:#f0c040;font-size:18px;letter-spacing:2px;}
 ::-webkit-scrollbar{width:6px;}
 ::-webkit-scrollbar-thumb{background:var(--green-lt);border-radius:3px;}
+
+/* ── 다음 시간 준비 프린트 CSS ── */
+@media print {
+  body > *:not(#ws-print-wrap) { display: none !important; }
+  #ws-print-wrap { display: block !important; position: static !important;
+    background: white !important; padding: 0 !important; margin: 0 !important; }
+  .ws-no-print { display: none !important; }
+  #ws-modal-overlay { display: none !important; }
+}
+#ws-print-wrap { display: none; }
+.ws-sheet { font-family: 'Noto Sans KR', Arial, sans-serif; max-width: 740px;
+  margin: 0 auto; padding: 20px; color: #1a1a1a; font-size: 13px; }
+.ws-header-row { display: flex; justify-content: space-between; align-items: flex-start;
+  border-bottom: 3px solid #6eb5a6; padding-bottom: 12px; margin-bottom: 16px; }
+.ws-title-box h1 { font-size: 22px; font-weight: 900; color: #2a5e54; margin: 0 0 4px; }
+.ws-meta { font-size: 12px; color: #555; line-height: 1.8; }
+.ws-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 12px; }
+.ws-col h2 { font-size: 14px; font-weight: 900; color: #2a5e54;
+  border-left: 4px solid #6eb5a6; padding-left: 8px; margin: 0 0 10px; }
+.ws-prob { background: #f8fffe; border: 1px solid #d0e8e3; border-radius: 8px;
+  padding: 10px 12px; margin-bottom: 8px; }
+.ws-prob-num { font-weight: 900; color: #6eb5a6; font-size: 12px; margin-bottom: 4px; }
+.ws-prob-q { font-size: 13px; line-height: 1.6; color: #222; }
+.ws-ans { font-size: 11px; color: #888; margin-top: 4px; }
+.ws-ans-box { border-top: 1px dashed #ccc; margin-top: 6px; padding-top: 4px;
+  min-height: 28px; font-size: 12px; color: #aaa; }
+.ws-concept { background: #fffbec; border-left: 3px solid #dbd2a4;
+  border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; font-size: 12px; line-height: 1.7; }
+.ws-footer { text-align: center; font-size: 10px; color: #aaa; margin-top: 16px;
+  border-top: 1px solid #eee; padding-top: 8px; }
 </style>
 <!-- Firebase SDK -->
 <script type="module">
@@ -691,6 +721,10 @@ console.log('✅ Firebase Firestore 연결 완료');
       학습기록
       <span class="nav-badge" id="badge-rev">0</span>
     </button>
+    <button class="nav-item" onclick="openWS()" style="color:var(--green);">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="8" x2="16" y2="8"/><line x1="8" y1="16" x2="12" y2="16"/></svg>
+      준비물
+    </button>
   </nav>
 </div>
 
@@ -818,6 +852,15 @@ console.log('✅ Firebase Firestore 연결 완료');
       <div class="sl">👨‍👩‍👧‍👦 등록된 학생</div>
       <div id="student-list-admin" style="margin-top:10px;"></div>
       <button class="btn btn-ghost" onclick="renderStudentAdmin()" style="margin-top:10px;font-size:14px;">🔄 새로고침</button>
+    </div>
+
+    <!-- 다음 시간 준비 -->
+    <div class="card" style="text-align:center;">
+      <div class="sl" style="text-align:left;">📋 다음 시간 준비</div>
+      <div style="font-size:13px;color:var(--mid);margin:8px 0 12px;text-align:left;">단원별 복습+예습 문제 프린트물 · QR 자동 로그인 포함</div>
+      <button onclick="openWS()" style="width:100%;background:linear-gradient(135deg,#2a5e54,#6eb5a6);border:none;border-radius:16px;padding:14px;font-family:inherit;font-size:15px;font-weight:900;color:white;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;box-shadow:0 4px 16px rgba(110,181,166,.3);">
+        📋 다음 시간 준비 만들기
+      </button>
     </div>
 
     <!-- QR 코드 + 앱 설치 -->
@@ -2191,6 +2234,230 @@ function showStarInfo(){
     ?`현재 뱃지: ${badge.label}\n⭐ ${stars}개 획득!\n${next?"다음 뱃지까지 "+(next.n-stars)+"개 남았어요 🎯":"🏆 모든 뱃지 달성!"}`
     :`⭐ 아직 별이 없어요.\n문제를 풀면 별을 받아요! 🌟\n첫 뱃지(${milestones[0].label})까지 ${milestones[0].n}개!`;
   showToast(msg);
+}
+
+
+// ══════════════════════════
+//  교육과정 단원 데이터
+// ══════════════════════════
+const CURRICULUM = {
+  1:[{u:1,t:'9까지의 수'},{u:2,t:'여러 가지 모양'},{u:3,t:'덧셈과 뺄셈'},{u:4,t:'비교하기'},{u:5,t:'50까지의 수'},{u:6,t:'100까지의 수'},{u:7,t:'덧셈과 뺄셈 (1)'},{u:8,t:'시계 보기와 규칙 찾기'}],
+  2:[{u:1,t:'세 자리 수'},{u:2,t:'여러 가지 도형'},{u:3,t:'덧셈과 뺄셈'},{u:4,t:'길이 재기'},{u:5,t:'분류하기'},{u:6,t:'곱셈'},{u:7,t:'곱셈구구'},{u:8,t:'시각과 시간'},{u:9,t:'표와 그래프'}],
+  3:[{u:1,t:'덧셈과 뺄셈'},{u:2,t:'평면도형'},{u:3,t:'나눗셈'},{u:4,t:'곱셈'},{u:5,t:'길이와 시간'},{u:6,t:'분수와 소수'},{u:7,t:'곱셈 (2)'},{u:8,t:'나눗셈 (2)'},{u:9,t:'원'},{u:10,t:'분수'}],
+  4:[{u:1,t:'큰 수'},{u:2,t:'각도'},{u:3,t:'곱셈과 나눗셈'},{u:4,t:'평면도형의 이동'},{u:5,t:'막대그래프'},{u:6,t:'규칙 찾기'},{u:7,t:'분수의 덧셈과 뺄셈'},{u:8,t:'삼각형'},{u:9,t:'소수의 덧셈과 뺄셈'},{u:10,t:'사각형'}],
+  5:[{u:1,t:'자연수의 혼합 계산'},{u:2,t:'약수와 배수'},{u:3,t:'규칙과 대응'},{u:4,t:'약분과 통분'},{u:5,t:'분수의 덧셈과 뺄셈'},{u:6,t:'다각형의 둘레와 넓이'},{u:7,t:'수의 범위와 어림하기'},{u:8,t:'분수의 곱셈'},{u:9,t:'합동과 대칭'},{u:10,t:'소수의 곱셈'}],
+  6:[{u:1,t:'분수의 나눗셈'},{u:2,t:'각기둥과 각뿔'},{u:3,t:'소수의 나눗셈'},{u:4,t:'비와 비율'},{u:5,t:'여러 가지 그래프'},{u:6,t:'직육면체의 부피와 겉넓이'},{u:7,t:'분수의 나눗셈 (2)'},{u:8,t:'소수의 나눗셈 (2)'},{u:9,t:'비례식과 비례배분'},{u:10,t:'원의 넓이'}]
+};
+
+// 날짜 기반 현재 단원 추정 (3월 시작, 단원당 3주)
+function guessCurrentUnit(){
+  const now=new Date();
+  const year=now.getFullYear();
+  const sem1Start=new Date(year,2,2); // 3월 2일
+  const weeksPassed=Math.floor((now-sem1Start)/(7*24*3600*1000));
+  return Math.min(Math.max(Math.ceil(weeksPassed/3),1),6);
+}
+
+// 단원 셀렉트 업데이트
+function wsUpdateUnits(){
+  const grade=parseInt(document.getElementById('ws-grade-sel').value)||4;
+  const units=CURRICULUM[grade]||[];
+  const sel=document.getElementById('ws-unit-sel');
+  if(!sel)return;
+  const curUnit=guessCurrentUnit();
+  sel.innerHTML=units.map(u=>`<option value="${u.u}" ${u.u===curUnit?'selected':''}>${u.u}단원 · ${u.t}</option>`).join('');
+}
+
+// 학생 셀렉트 업데이트
+function wsUpdateStudents(){
+  const sel=document.getElementById('ws-student-sel');
+  if(!sel)return;
+  const students=getStudents();
+  const current=S.studentName||'';
+  sel.innerHTML=`<option value="">선생님(전체)</option>`+students.map(s=>`<option value="${s.name}" ${s.name===current?'selected':''}>${s.name}</option>`).join('');
+}
+
+// 워크시트 열기
+function openWS(){
+  const modal=document.getElementById('ws-modal-overlay');
+  if(!modal)return;
+  modal.style.display='block';
+  const grade=S.studentName?getStudent(S.studentName)?.grade||S.grade:S.grade;
+  const gradeEl=document.getElementById('ws-grade-sel');
+  if(gradeEl) gradeEl.value=grade;
+  wsUpdateUnits();
+  wsUpdateStudents();
+}
+function closeWS(){
+  const modal=document.getElementById('ws-modal-overlay');
+  if(modal) modal.style.display='none';
+}
+
+// 워크시트 생성 (Claude API)
+async function genWorksheet(){
+  if(!S.key){showToast('API 키가 없어요. 선생님 설정에서 먼저 입력해주세요!');return;}
+  const grade=parseInt(document.getElementById('ws-grade-sel').value)||4;
+  const unitNum=parseInt(document.getElementById('ws-unit-sel').value)||3;
+  const studentName=(document.getElementById('ws-student-sel').value)||null;
+  const units=CURRICULUM[grade]||[];
+  const curUnit=units.find(u=>u.u===unitNum)||units[unitNum-1]||{u:unitNum,t:'해당 단원'};
+  const nextUnit=units.find(u=>u.u===unitNum+1)||{u:unitNum+1,t:'다음 단원'};
+  const today=new Date().toLocaleDateString('ko-KR',{year:'numeric',month:'long',day:'numeric'});
+  const displayName=studentName||'전체 학생';
+  const hist=studentName?getHist(studentName):[];
+  const todayStr=new Date().toISOString().slice(0,10);
+  const todayProblems=hist.filter(r=>r.savedAt&&r.savedAt.slice&&r.savedAt.slice(0,10)===todayStr).map(r=>r.problem).filter(Boolean).slice(0,5);
+  const box=document.getElementById('ws-content');
+  if(box) box.innerHTML='<div style="text-align:center;padding:40px;color:#6eb5a6;font-size:16px;font-weight:700;">✨ 워크시트 만드는 중...</div>';
+  const prompt=`당신은 초등 수학 선생님입니다.
+
+학년: ${grade}학년
+오늘 배운 단원: ${curUnit.u}단원 - ${curUnit.t}
+다음 단원: ${nextUnit.u}단원 - ${nextUnit.t}
+${todayProblems.length?'오늘 수풀AI 학습: '+todayProblems.join(', '):''}
+
+다음 형식으로 정확하게 작성해주세요. HTML 태그 없이 순수 텍스트로:
+
+---REVIEW_START---
+[복습1]문제: (구체적인 수학 문제)
+답: (정답)
+
+[복습2]문제: (구체적인 수학 문제)
+답: (정답)
+
+[복습3]문제: (구체적인 수학 문제)
+답: (정답)
+---REVIEW_END---
+
+---PREVIEW_START---
+[개념]핵심 내용: (다음 단원 핵심 개념 2~3줄)
+
+[예습1]문제: (다음 단원 예습 문제)
+답: (정답)
+
+[예습2]문제: (다음 단원 예습 문제)
+답: (정답)
+---PREVIEW_END---
+
+문제는 ${grade}학년 수준에 맞게, 구체적인 숫자를 사용해주세요.`;
+
+  try{
+    const res=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':S.key,
+        'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:'claude-opus-4-6',max_tokens:1200,
+        messages:[{role:'user',content:prompt}]})
+    });
+    const data=await res.json();
+    if(data.error) throw new Error(data.error.message);
+    const text=data.content[0].text;
+    renderWorksheet(text,grade,curUnit,nextUnit,displayName,studentName,today);
+  }catch(e){
+    if(box) box.innerHTML=`<div style="text-align:center;padding:40px;color:red;">오류: ${e.message}</div>`;
+  }
+}
+
+function renderWorksheet(text,grade,curUnit,nextUnit,displayName,studentName,today){
+  const revM=text.match(/---REVIEW_START---([\s\S]*?)---REVIEW_END---/);
+  const preM=text.match(/---PREVIEW_START---([\s\S]*?)---PREVIEW_END---/);
+  const revText=revM?revM[1].trim():'복습 문제를 생성 중 오류가 발생했어요.';
+  const preText=preM?preM[1].trim():'예습 내용을 생성 중 오류가 발생했어요.';
+
+  // 문제 파싱
+  function parseProbs(txt){
+    const items=[];
+    const blocks=txt.split(/\n\n+/).filter(b=>b.trim());
+    blocks.forEach(b=>{
+      const mLabel=b.match(/\[(복습|예습|개념)\d*\]/);
+      const mQ=b.match(/문제:\s*(.+)/s);
+      const mA=b.match(/답:\s*(.+)/);
+      const mC=b.match(/핵심 내용:\s*(.+)/s);
+      if(mC) items.push({type:'concept',text:mC[1].trim()});
+      else if(mQ) items.push({type:'prob',q:mQ[1].trim(),a:mA?mA[1].trim():''});
+    });
+    return items;
+  }
+
+  const revItems=parseProbs(revText);
+  const preItems=parseProbs(preText);
+
+  // QR URL (학생 자동 로그인)
+  const baseURL='https://jinwooshon-coder.github.io/tongpul-ai/supul/';
+  const qrURL=studentName?`${baseURL}?n=${encodeURIComponent(studentName)}&g=${grade}`:baseURL;
+
+  function renderProbs(items,prefix){
+    return items.map((item,i)=>{
+      if(item.type==='concept') return `<div class="ws-concept">💡 <strong>핵심 개념</strong><br>${item.text.replace(/\n/g,'<br>')}</div>`;
+      return `<div class="ws-prob">
+        <div class="ws-prob-num">${prefix} ${i+1}</div>
+        <div class="ws-prob-q">${item.q}</div>
+        <div class="ws-ans-box">정답: ${item.a||'___________'}</div>
+      </div>`;
+    }).join('');
+  }
+
+  const html=`
+    <div class="ws-header-row">
+      <div class="ws-title-box">
+        <h1>📚 다음 시간 준비</h1>
+        <div class="ws-meta">
+          날짜: ${today}<br>
+          이름: <strong>${displayName}</strong> &nbsp;|&nbsp; ${grade}학년 &nbsp;|&nbsp;
+          ${curUnit.u}단원 · ${curUnit.t}
+        </div>
+      </div>
+      <div id="ws-qr-box" style="width:80px;height:80px;flex-shrink:0;"></div>
+    </div>
+    <div class="ws-cols">
+      <div class="ws-col">
+        <h2>📝 오늘 배운 내용 복습</h2>
+        <div style="font-size:11px;color:#888;margin-bottom:8px;">${curUnit.u}단원 · ${curUnit.t}</div>
+        ${renderProbs(revItems,'복습')}
+      </div>
+      <div class="ws-col">
+        <h2>🌱 다음 시간 예습</h2>
+        <div style="font-size:11px;color:#888;margin-bottom:8px;">${nextUnit.u}단원 · ${nextUnit.t}</div>
+        ${renderProbs(preItems,'예습')}
+      </div>
+    </div>
+    <div class="ws-footer">수풀AI — 수학 학습 도우미 | jinwooshon-coder.github.io/tongpul-ai/supul/</div>
+  `;
+  const box=document.getElementById('ws-content');
+  if(box){
+    box.innerHTML=html;
+    // QR 코드 생성
+    const qrBox=document.getElementById('ws-qr-box');
+    if(qrBox&&typeof QRCode!=='undefined'){
+      qrBox.innerHTML='';
+      new QRCode(qrBox,{text:qrURL,width:80,height:80,colorDark:'#2a5e54',colorLight:'#ffffff'});
+    }
+  }
+  // 프린트 영역 동기화
+  const printWrap=document.getElementById('ws-print-wrap');
+  if(printWrap) printWrap.style.display='block';
+}
+
+// URL 파라미터로 학생 자동 로그인
+function checkURLAutoLogin(){
+  const params=new URLSearchParams(window.location.search);
+  const name=params.get('n');
+  const grade=parseInt(params.get('g'));
+  if(!name) return;
+  const normalized=normName(name);
+  // 학생 없으면 자동 등록
+  const existing=getStudent(normalized);
+  if(!existing && normalized){
+    upsertStudent({name:normalized,grade:grade||3,stars:0,registeredAt:Date.now()});
+  }
+  if(normalized){
+    S.studentName=normalized;
+    if(grade) S.grade=grade;
+    S.isDemo=false;
+    initMain();
+    showScreen('s-main');
+    showToast(`${normalized} 학생, 환영해요! 🎉`);
+  }
 }
 
 // ══════════════════════════
