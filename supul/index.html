@@ -36,6 +36,12 @@
 .star-em{font-size:64px;display:block;margin-bottom:10px;animation:star-pop .4s cubic-bezier(.36,.07,.19,.97);}
 @keyframes confetti-fall{0%{transform:translateY(0) rotate(0deg);opacity:.9;}100%{transform:translateY(110vh) rotate(720deg);opacity:0;}}
 @keyframes star-pop{0%{transform:scale(0);}60%{transform:scale(1.2);}100%{transform:scale(1);}}
+@keyframes effortBlink{
+  0%{opacity:1;transform:scale(1) translateY(0);}
+  35%{opacity:.1;transform:scale(.88) translateY(-2px);}
+  70%{opacity:1;transform:scale(1.08) translateY(0);}
+  100%{opacity:1;transform:scale(1) translateY(0);}
+}
 .star-title{font-size:22px;font-weight:900;color:var(--deep);margin-bottom:6px;}
 .star-sub{font-size:14px;color:var(--mid);margin-bottom:20px;}
 .star-total{font-size:36px;font-weight:900;color:var(--star);}
@@ -578,6 +584,7 @@ console.log('✅ Firebase Firestore 연결 완료');
     </div>
     <div style="display:flex;align-items:center;gap:8px;">
       <div class="star-badge" onclick="showStarInfo()" id="star-display">⭐ 0</div>
+      <div class="star-badge" onclick="showEffortInfo()" id="effort-display" style="background:linear-gradient(135deg,#ff9f43,#ee5a24);color:white;border:none;">🔥 0</div>
       <button class="icon-btn" onclick="goSettings()">
         <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
@@ -1403,7 +1410,7 @@ function renderStudentBtns(students){
       <span style="font-size:32px;">${emojis[i%emojis.length]}</span>
       <div>
         <div style="font-size:17px;font-weight:900;color:var(--deep);">${s.name}</div>
-        <div style="font-size:12px;color:var(--mid);">${s.grade||3}학년 · ⭐ ${s.stars||0}개</div>
+        <div style="font-size:12px;color:var(--mid);">${s.grade||3}학년 · ⭐ ${s.stars||0}개 · 🔥 ${(()=>{try{return JSON.parse(localStorage.getItem('eff_'+s.name)||'{}').total||0;}catch{return 0;}})()}점</div>
       </div>
     </button>`).join('');
 }
@@ -1600,6 +1607,14 @@ function initMain(){
   _updatePlaceholder(S.grade); // 학년별 입력창 예시
   updateBadge();
   updateStarDisplay();
+  updateEffortDisplay();
+  checkStreakBonus(); // 연속 접속 보너스 체크
+  S._sessStart=Date.now(); // 세션 시작 시간 리셋
+  S._effTimers={5:false,15:false,30:false};
+  // 세션 활동 초기화 (sessActs는 세션 당 1번 제한용)
+  const d=getEffortData(S.studentName);
+  d.sessActs=[];
+  saveEffortData(d,S.studentName);
   initPasteHandler();
 }
 
@@ -1922,6 +1937,7 @@ ${ageTip}
 //  응답 처리
 // ══════════════════════════
 function processRes(text,htype,prob){
+  addEffort('sess_question',2); // 🔥 질문 노력 점수
   const expM=text.match(/---EXPLANATION_START---([\s\S]*?)---EXPLANATION_END---/);
   const expHTML=expM?expM[1].trim():text;
   let ytSearches=[];
@@ -1987,6 +2003,7 @@ function _speakQueue(){
 }
 
 function speakExp(){
+  addEffort('sess_tts',1); // 🔥 TTS 노력
   if(!window.speechSynthesis){showToast('이 기기는 읽어주기를 지원하지 않아요 😢');return;}
   if(_ttsActive){window.speechSynthesis.cancel();_ttsActive=false;_ttsQueue=[];_ttsIdx=0;_updateTTSBtn(false);return;}
   const body=document.querySelector('.exp-body');
@@ -2007,31 +2024,23 @@ function speakExp(){
   } else { doSpeak(); }
 }
 // ══════════════════════════════════
-// 📊 이해도 평가 제출
+// 📊 이해도 평가 제출 (1단계: 자기평가 → 2단계: 퀴즈)
 // ══════════════════════════════════
 function submitUnderstanding(level){
-  // 이미 평가했으면 무시
   const card=document.getElementById('understanding-card');
   if(card && card.dataset.done==='1') return;
+  card.dataset.done='1';
 
-  const starMap={great:5, ok:3, hard:1};
-  const labelMap={great:'😊 완전히 이해', ok:'🤔 조금 어려움', hard:'😢 다시 봐야 함'};
-  const msgMap={
-    great:'완벽해요! 혼자서도 할 수 있어요! 🏆',
-    ok:'잘 했어요! 조금씩 더 연습하면 돼요 💪',
-    hard:'괜찮아요! 어려운 건 다시 보면 돼요 😊'
-  };
-  const stars=starMap[level]||1;
+  const labelMap={great:'😊 완전히 이해했어요',ok:'🤔 조금 어려웠어요',hard:'😢 잘 모르겠어요'};
 
-  // 히스토리에 이해도 저장
+  // 1단계: 히스토리에 자기평가 저장 (선생님 참고용만, 별 없음)
   if(S.curRecord){
     const hist=getHist(S.studentName);
     const idx=hist.findIndex(r=>r.id===S.curRecord.id);
     if(idx>=0){
       hist[idx].understanding=level;
-      hist[idx].stars=stars;
+      hist[idx].stars=0; // 퀴즈 결과로 나중에 업데이트
       hist[idx].understoodAt=new Date().toISOString();
-      // hard면 복습 간격 짧게 재조정
       if(level==='hard'){
         hist[idx].reviews=[
           {label:'1시간 후 복습',due:Date.now()+3600*1000,done:false},
@@ -2042,28 +2051,232 @@ function submitUnderstanding(level){
       saveHistData(hist,S.studentName);
     }
   }
+  S._understandingLevel=level; // 퀴즈 별 계산에 활용
 
-  // 별 지급
-  awardStar(stars, msgMap[level]);
-
-  // 카드 완료 처리
+  // 카드를 퀴즈 로딩 상태로 전환
   if(card){
-    card.dataset.done='1';
     card.innerHTML=`
-      <div style="text-align:center;padding:14px;">
-        <div style="font-size:36px;margin-bottom:8px;">${level==='great'?'🏆':level==='ok'?'💪':'🌱'}</div>
-        <div style="font-weight:900;font-size:16px;color:var(--deep);">${labelMap[level]}</div>
-        <div style="font-size:13px;color:var(--mid);margin-top:6px;">${msgMap[level]}</div>
-        <div style="margin-top:10px;font-size:20px;color:var(--star);">${'⭐'.repeat(stars)}</div>
-        ${level==='hard'?'<div style="margin-top:10px;font-size:12px;background:#fff0f0;border-radius:10px;padding:8px;color:#c0392b;">📌 이 개념이 복습 목록에 추가됐어요!</div>':''}
+      <div style="text-align:center;padding:14px 10px;">
+        <div style="font-size:13px;color:var(--mid);margin-bottom:10px;">✅ <b>${labelMap[level]}</b> — 선생님께 전달됐어요!</div>
+        <div style="font-size:17px;font-weight:900;color:var(--deep);margin-bottom:8px;">🧩 짧은 퀴즈 하나만 풀어봐요!</div>
+        <div style="font-size:13px;color:var(--mid);margin-bottom:14px;">방금 배운 내용에서 문제를 만들었어요.<br>맞히면 ⭐를 드려요!</div>
+        <div id="quiz-loading" style="display:flex;align-items:center;justify-content:center;gap:8px;color:var(--green);font-size:14px;">
+          <div class="spinner" style="width:20px;height:20px;border:3px solid var(--green-lt);border-top:3px solid var(--green);border-radius:50%;animation:spin .8s linear infinite;"></div>
+          문제 만드는 중...
+        </div>
+        <div id="quiz-area" style="display:none;"></div>
+      </div>`;
+    generateUnderstandingQuiz(level);
+  }
+}
+
+// ══════════════════════════════════
+// 🧩 이해도 퀴즈 생성 (Claude API)
+// ══════════════════════════════════
+async function generateUnderstandingQuiz(understandingLevel){
+  if(!S.key){
+    document.getElementById('quiz-loading').innerHTML='<span style="color:#e74c3c;">⚠️ API 키가 없어요</span>';
+    return;
+  }
+  const body=document.querySelector('.exp-body');
+  const expText=body?(body.innerText||body.textContent).slice(0,1000):'';
+  const cl=S.cogLevel||S.grade||3;
+  const gradeNames=['','1학년','2학년','3학년','4학년','5학년','6학년'];
+  const numQ=(cl<=2)?1:2; // 저학년 1문제, 고학년 2문제
+
+  const prompt=`당신은 초등수학 퀴즈 출제 전문가입니다.
+학생 학년: ${gradeNames[S.grade]||'초등학생'} (설명 수준: ${cl}단계)
+
+[방금 학생이 공부한 내용]
+${expText}
+
+위 내용을 이해했는지 확인하는 사지선다 퀴즈를 정확히 ${numQ}개 만들어 주세요.
+반드시 아래 JSON 형식으로만 응답하고 다른 텍스트는 절대 쓰지 마세요:
+
+{"questions":[
+  {
+    "q":"질문 내용 (${cl<=2?'아주 쉽고 짧게':'명확하게'})",
+    "opts":["①선택지","②선택지","③선택지","④선택지"],
+    "ans":0
+  }
+]}
+
+규칙:
+- ans는 0-3 숫자 (정답 선택지 인덱스)
+- 선택지는 4개 정확히
+- 정답은 공부한 내용에서 직접 나와야 함
+- ${cl<=2?'그림/상황으로 설명되는 구체적 문제':'개념 이해를 확인하는 문제'}
+- 오답도 그럴듯하게 만들 것`;
+
+  try{
+    const res=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':S.key,
+        'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:600,
+        messages:[{role:'user',content:prompt}]})
+    });
+    const data=await res.json();
+    if(data.error) throw new Error(data.error.message);
+    let raw=data.content[0].text.trim();
+    // JSON 파싱 (```json 블록 처리)
+    raw=raw.replace(/^```json\s*/,'').replace(/^```\s*/,'').replace(/\s*```$/,'');
+    const parsed=JSON.parse(raw);
+    renderUnderstandingQuiz(parsed.questions||[], understandingLevel);
+  }catch(e){
+    const ld=document.getElementById('quiz-loading');
+    if(ld) ld.innerHTML='<span style="color:#e74c3c;">⚠️ 퀴즈 생성 실패 — 다음에 도전해봐요!</span>';
+    // 실패해도 기본 1★ 지급
+    setTimeout(()=>awardStar(1,'퀴즈에 도전했어요! 👏'),800);
+  }
+}
+
+// ══════════════════════════════════
+// 🧩 이해도 퀴즈 렌더링
+// ══════════════════════════════════
+function renderUnderstandingQuiz(questions, understandingLevel){
+  const ld=document.getElementById('quiz-loading');
+  const qa=document.getElementById('quiz-area');
+  if(!ld||!qa) return;
+  ld.style.display='none';
+  qa.style.display='block';
+
+  const cl=S.cogLevel||S.grade||3;
+  S._quizQuestions=questions;
+  S._quizAnswers=new Array(questions.length).fill(null);
+  S._understandingForQuiz=understandingLevel;
+
+  let html='<div style="display:flex;flex-direction:column;gap:16px;">';
+  questions.forEach((q,qi)=>{
+    html+=`<div class="quiz-item" data-qi="${qi}" style="background:white;border-radius:14px;padding:14px;border:2px solid var(--green-lt);">
+      <div style="font-weight:900;font-size:14px;color:var(--deep);margin-bottom:10px;">${qi+1}. ${q.q}</div>
+      <div style="display:flex;flex-direction:column;gap:8px;">`;
+    q.opts.forEach((opt,oi)=>{
+      html+=`<button onclick="selectQuizOpt(${qi},${oi},this)" data-qi="${qi}" data-oi="${oi}"
+        style="background:#f8f9fa;border:2px solid #e0e0e0;border-radius:12px;padding:10px 14px;
+               font-family:inherit;font-size:${cl<=2?'15':'14'}px;font-weight:600;cursor:pointer;
+               text-align:left;color:var(--deep);transition:all .15s;">
+        ${opt}
+      </button>`;
+    });
+    html+=`</div></div>`;
+  });
+  html+=`</div>
+  <button onclick="submitQuizAnswer()" id="quiz-submit-btn"
+    style="margin-top:16px;width:100%;background:var(--green);color:white;border:none;
+           border-radius:14px;padding:13px;font-family:inherit;font-size:16px;font-weight:900;
+           cursor:pointer;opacity:.4;pointer-events:none;transition:all .2s;">
+    ✅ 제출하기
+  </button>`;
+  qa.innerHTML=html;
+}
+
+// 선택지 클릭
+function selectQuizOpt(qi,oi,btn){
+  // 같은 문제 내 다른 선택지 해제
+  document.querySelectorAll(`[data-qi="${qi}"]`).forEach(b=>{
+    if(b.tagName==='BUTTON'){
+      b.style.background='#f8f9fa';
+      b.style.borderColor='#e0e0e0';
+      b.style.color='var(--deep)';
+    }
+  });
+  btn.style.background='var(--green)';
+  btn.style.borderColor='var(--green)';
+  btn.style.color='white';
+  S._quizAnswers[qi]=oi;
+  // 모든 문제에 답했으면 제출 버튼 활성화
+  const allAnswered=S._quizAnswers.every(a=>a!==null);
+  const subBtn=document.getElementById('quiz-submit-btn');
+  if(subBtn && allAnswered){
+    subBtn.style.opacity='1';
+    subBtn.style.pointerEvents='auto';
+  }
+}
+
+// ══════════════════════════════════
+// 🏆 퀴즈 제출 & 별 지급
+// ══════════════════════════════════
+function submitQuizAnswer(){
+  addEffort('sess_quiz',3); // 🔥 퀴즈 참여 노력
+  const qs=S._quizQuestions||[];
+  const ans=S._quizAnswers||[];
+  if(!qs.length) return;
+
+  let correct=0;
+  qs.forEach((q,i)=>{ if(ans[i]===q.ans) correct++; });
+  const total=qs.length;
+
+  // 별 계산: 전체 정답 5★, 절반 이상 3★, 0개 1★
+  let stars=1;
+  if(correct===total) stars=5;
+  else if(correct>0) stars=3;
+
+  // 히스토리에 퀴즈 결과 + 별 업데이트
+  if(S.curRecord){
+    const hist=getHist(S.studentName);
+    const idx=hist.findIndex(r=>r.id===S.curRecord.id);
+    if(idx>=0){
+      hist[idx].stars=stars;
+      hist[idx].quizCorrect=correct;
+      hist[idx].quizTotal=total;
+      saveHistData(hist,S.studentName);
+    }
+  }
+
+  // 결과 화면 표시 (정답/오답 표시 후 별 지급)
+  const qa=document.getElementById('quiz-area');
+  if(qa){
+    let resHtml=`<div style="margin-bottom:14px;">`;
+    qs.forEach((q,i)=>{
+      const userAns=ans[i];
+      const isRight=(userAns===q.ans);
+      resHtml+=`<div style="background:${isRight?'#e8f8f0':'#fff0f0'};border:2px solid ${isRight?'#6eb5a6':'#e74c3c'};
+        border-radius:12px;padding:12px;margin-bottom:10px;">
+        <div style="font-weight:900;font-size:13px;color:var(--deep);margin-bottom:6px;">
+          ${isRight?'✅':'❌'} ${i+1}. ${q.q}
+        </div>
+        <div style="font-size:13px;color:${isRight?'#27ae60':'#e74c3c'};">
+          내 답: ${q.opts[userAns]||'?'}
+        </div>
+        ${!isRight?`<div style="font-size:12px;color:var(--mid);margin-top:4px;">
+          정답: ${q.opts[q.ans]}
+        </div>`:''}
+      </div>`;
+    });
+    resHtml+=`</div>`;
+
+    const emoji=correct===total?'🏆':correct>0?'💪':'🌱';
+    const msg=correct===total
+      ?'완벽해요! 다 맞혔어요! 🎉'
+      :correct>0
+      ?`${correct}개 맞혔어요! 잘 하고 있어요 😊`
+      :'괜찮아요! 다시 읽어보면 할 수 있어요 💙';
+
+    qa.innerHTML=resHtml+`
+      <div style="text-align:center;background:linear-gradient(135deg,#f0faf7,#e4f5ef);
+           border-radius:14px;padding:16px;border:2px solid var(--green-lt);">
+        <div style="font-size:40px;margin-bottom:8px;">${emoji}</div>
+        <div style="font-weight:900;font-size:16px;color:var(--deep);margin-bottom:6px;">
+          ${correct}/${total}개 정답!
+        </div>
+        <div style="font-size:13px;color:var(--mid);margin-bottom:10px;">${msg}</div>
+        <div style="font-size:24px;color:var(--star);">${'⭐'.repeat(stars)}</div>
       </div>`;
   }
+
+  // 별 지급
+  const starMsg=correct===total?'퀴즈 만점! 정말 대단해요! 🏆'
+    :correct>0?`퀴즈 ${correct}개 맞혔어요! 💪`
+    :'도전한 것만으로도 대단해요! 🌱';
+  setTimeout(()=>awardStar(stars, starMsg), 600);
 }
 
 // ══════════════════════════════════
 // ✏️ 학생 답 확인 (AI 채점)
 // ══════════════════════════════════
 async function checkStudentAns(){
+  addEffort('sess_ans',2); // 🔥 직접 답 쓰기 노력
   const ans=(document.getElementById('student-ans-input')||{}).value||'';
   if(!ans.trim()){showToast('답을 먼저 써봐요! ✏️');return;}
   if(!S.key){showToast('API 키가 없어요');return;}
@@ -2128,6 +2341,7 @@ function _updateTTSBtn(active){
 // ══════════════════════════════════
 let _sttActive=false,_sttRecog=null;
 function toggleSTT(){
+  addEffort('sess_stt',1); // 🔥 STT 노력
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
   if(!SR){showToast('이 브라우저는 음성 입력을 지원하지 않아요 😢');return;}
   const btn=document.getElementById('stt-btn');
@@ -2211,23 +2425,23 @@ const expHTML_TPL=(html,htype)=>`
   <div class="card" id="understanding-card" style="border:2px solid var(--green);background:linear-gradient(135deg,#f0faf7,#e4f5ef);">
     <div style="text-align:center;margin-bottom:12px;">
       <div style="font-size:18px;font-weight:900;color:var(--deep);margin-bottom:4px;">📊 오늘 공부 어땠어요?</div>
-      <div style="font-size:13px;color:var(--mid);">솔직하게 골라봐요 — 선생님이 도움 받을 수 있어요!</div>
+      <div style="font-size:13px;color:var(--mid);">솔직하게 골라봐요! 그 다음 퀴즈로 별을 받아요 🌟</div>
     </div>
     <div style="display:flex;flex-direction:column;gap:10px;">
       <button onclick="submitUnderstanding('great')" class="und-btn" style="background:linear-gradient(135deg,#6eb5a6,#4a9e8f);color:white;border:none;border-radius:16px;padding:14px;font-family:inherit;font-size:15px;font-weight:700;cursor:pointer;text-align:left;display:flex;align-items:center;gap:10px;">
         <span style="font-size:24px;">😊</span>
         <div><div style="font-weight:900;">완전히 이해했어요!</div><div style="font-size:12px;opacity:.85;">혼자서도 설명할 수 있을 것 같아요</div></div>
-        <span style="margin-left:auto;font-size:13px;background:rgba(255,255,255,.3);border-radius:10px;padding:3px 8px;">⭐×5</span>
+        <span style="margin-left:auto;font-size:13px;background:rgba(255,255,255,.2);border-radius:10px;padding:3px 8px;opacity:.7;">선생님만 봐요</span>
       </button>
       <button onclick="submitUnderstanding('ok')" class="und-btn" style="background:linear-gradient(135deg,#f9ca74,#f0b429);color:var(--deep);border:none;border-radius:16px;padding:14px;font-family:inherit;font-size:15px;font-weight:700;cursor:pointer;text-align:left;display:flex;align-items:center;gap:10px;">
         <span style="font-size:24px;">🤔</span>
         <div><div style="font-weight:900;">조금 어려웠어요</div><div style="font-size:12px;opacity:.75;">대충 알겠는데 더 봐야 할 것 같아요</div></div>
-        <span style="margin-left:auto;font-size:13px;background:rgba(255,255,255,.4);border-radius:10px;padding:3px 8px;">⭐×3</span>
+        <span style="margin-left:auto;font-size:13px;background:rgba(255,255,255,.3);border-radius:10px;padding:3px 8px;opacity:.7;">선생님만 봐요</span>
       </button>
       <button onclick="submitUnderstanding('hard')" class="und-btn" style="background:linear-gradient(135deg,#b2a7b8,#9a8fa6);color:white;border:none;border-radius:16px;padding:14px;font-family:inherit;font-size:15px;font-weight:700;cursor:pointer;text-align:left;display:flex;align-items:center;gap:10px;">
         <span style="font-size:24px;">😢</span>
         <div><div style="font-weight:900;">잘 모르겠어요</div><div style="font-size:12px;opacity:.85;">다시 봐야 할 것 같아요</div></div>
-        <span style="margin-left:auto;font-size:13px;background:rgba(255,255,255,.3);border-radius:10px;padding:3px 8px;">⭐×1</span>
+        <span style="margin-left:auto;font-size:13px;background:rgba(255,255,255,.2);border-radius:10px;padding:3px 8px;opacity:.7;">선생님만 봐요</span>
       </button>
     </div>
   </div>\`;
@@ -2399,6 +2613,191 @@ function updateStarDisplay(){
   const el=document.getElementById('star-display');
   if(el) el.textContent=`⭐ ${stars}`;
 }
+
+// ══════════════════════════════════════════════════════
+// 🔥 노력 점수 시스템 — 시간·활동 기반 성실함 보상
+// ══════════════════════════════════════════════════════
+function getEffortData(name){
+  try{return JSON.parse(localStorage.getItem('eff_'+(name||'demo'))||'{"total":0,"today":0,"lastDate":"","streak":0,"sessActs":[]}');}
+  catch{return{total:0,today:0,lastDate:'',streak:0,sessActs:[]};}
+}
+function saveEffortData(d,name){
+  localStorage.setItem('eff_'+(name||'demo'),JSON.stringify(d));
+}
+
+// 노력 점수 지급
+function addEffort(type, pts){
+  if(!S.studentName || S.isTeacher) return;
+  pts=pts||1;
+  const d=getEffortData(S.studentName);
+  const today=new Date().toDateString();
+  // 연속 접속 스트릭
+  if(d.lastDate!==today){
+    const yest=new Date(Date.now()-86400000).toDateString();
+    d.streak=(d.lastDate===yest)?(d.streak||0)+1:1;
+    d.today=0;
+    d.lastDate=today;
+  }
+  // 세션 내 중복 활동 방지 (type이 'sess_'로 시작하면 세션당 1번)
+  if(type.startsWith('sess_')){
+    if((d.sessActs||[]).includes(type)) return;
+    d.sessActs=[...(d.sessActs||[]),type];
+  }
+  d.total=(d.total||0)+pts;
+  d.today=(d.today||0)+pts;
+  saveEffortData(d,S.studentName);
+  updateEffortDisplay();
+  showEffortToast(pts,type,d);
+}
+
+// 노력 토스트 메시지
+const EFFORT_MSGS={
+  sess_question:[
+    ['궁금한 걸 물어봤어요! 질문이 공부의 시작이에요 🌱','훌륭해요! 질문하는 어린이가 제일 똑똑해요 🐣','오늘도 수풀이에게 물어봤군요! 최고예요 🌟'],
+    ['질문하는 습관이 실력을 키워요! 💪','스스로 궁금한 걸 찾아봤어요! 정말 잘하고 있어요 👏','오늘도 열심히 공부하네요! 대단해요 🚀'],
+    ['능동적으로 학습하고 있어요! 🎯','질문이 이해의 첫 단계예요! 훌륭합니다 🔥','꾸준한 탐구 정신이 빛나요! ⭐'],
+  ],
+  sess_tts:[
+    ['읽어주기로 열심히 들었어요! 🎧','귀로도 공부하는 어린이! 대단해요 👂','열심히 듣고 있어요! 최고야 🌈'],
+    ['소리로 들으면 더 잘 기억돼요! 👍','다양하게 공부하는 방법을 알고 있네요! 💡','꼼꼼하게 공부하고 있어요 📚'],
+    ['멀티 감각으로 학습 중이에요! 🧠','다각도로 공부하는 자세가 훌륭해요 ✨','청각 학습을 활용하는 영리한 학생이에요 🦉'],
+  ],
+  sess_stt:[
+    ['목소리로 질문했어요! 용감해요 🦁','말하면서 공부하면 더 잘 기억돼요 🗣','소리 내어 공부하는 어린이 최고! 🌟'],
+    ['말로 표현하는 것도 공부예요! 👏','음성으로 도전했어요! 훌륭해요 🎤','다양한 방법으로 공부하고 있어요 💪'],
+    ['표현력도 실력이에요! 멋져요 🎯','음성 학습을 활용하는 스마트한 학생! 🚀','언어 능력과 수학을 함께 키우고 있어요 🌿'],
+  ],
+  sess_draw:[
+    ['그림으로 생각을 나타냈어요! 멋져요 ✏️','직접 그려보는 어린이! 진짜 열심히 해요 🖊','오늘도 손을 움직이며 공부했어요! 훌륭해요 🎨'],
+    ['시각화로 이해를 높이고 있어요! 📐','직접 써보면 훨씬 잘 기억돼요! 😊','손으로 공부하는 습관이 최고예요 💡'],
+    ['시각적 사고력을 키우고 있어요! 🧩','그림으로 개념을 정리하는 훌륭한 방법이에요 🎯','수학적 시각화 능력이 쌓이고 있어요 📊'],
+  ],
+  sess_quiz:[
+    ['퀴즈에 도전했어요! 용감해요 🏆','어려워도 끝까지 해봤어요! 최고야 🥊','퀴즈로 실력을 확인했어요! 훌륭해요 🌟'],
+    ['틀려도 괜찮아요! 도전이 중요해요 💪','실력을 확인하는 용기 있는 어린이! 👊','퀴즈를 통해 더 강해지고 있어요 🔥'],
+    ['자기 실력을 직면하는 용기! 대단해요 🎯','퀴즈는 실력 향상의 지름길이에요 🚀','도전하는 자세가 진짜 실력이에요 💎'],
+  ],
+  sess_ans:[
+    ['직접 답을 써봤어요! 대단해요 ✍️','스스로 풀어보려고 노력했어요! 최고야 🌟','직접 써보는 게 진짜 공부예요! 훌륭해요 🐣'],
+    ['스스로 생각하고 써봤어요! 멋져요 💪','자기 생각을 표현하는 연습! 정말 잘하고 있어요 📝','풀어보려는 노력이 빛나요! 👏'],
+    ['사고력을 직접 표현하는 훌륭한 습관! 🎯','스스로 풀어보는 자세가 성장을 만들어요 🌿','능동적 학습의 핵심을 실천하고 있어요 🔬'],
+  ],
+  sess_review:[
+    ['다시 보기로 더 깊이 이해했어요! 🔄','복습하는 어린이가 제일 잘 기억해요! 🧠','한 번 더 보는 습관! 정말 훌륭해요 🌟'],
+    ['복습은 실력의 진짜 비결이에요! 💡','꼼꼼하게 다시 보고 있어요! 정말 잘해요 📖','복습하는 습관이 최고의 공부법이에요 👍'],
+    ['기억의 강화를 위한 완벽한 전략! 🧩','복습을 통해 장기 기억을 만들고 있어요 🏛','메타인지를 실천하는 훌륭한 학습자! 🦉'],
+  ],
+  time5:[
+    ['5분 공부했어요! 정말 대단해요 ⏱','벌써 5분이나 공부했어요! 최고야 🕐','5분 집중! 훌륭해요! 계속 해봐요 🌟'],
+    ['5분 집중 완료! 잘 하고 있어요 💪','5분이나 열심히 했어요! 대단해요 🔥','계속 이렇게 해봐요! 5분 달성! 👊'],
+    ['5분 집중 학습 완료! 훌륭합니다 🎯','집중 시간 5분 달성! 계속 이어가세요 ⚡','5분이 쌓여 실력이 돼요! 잘 하고 있어요 📈'],
+  ],
+  time15:[
+    ['15분이나 공부했어요! 대단해요!! 🕐','와! 15분 집중! 정말 멋진 어린이예요 🌈','15분 공부 완료! 최고예요 🏅'],
+    ['15분 집중 학습! 정말 열심히 하고 있어요 🔥','집중력이 대단해요! 15분 달성! 💪','꾸준히 15분! 실력이 쌓이고 있어요 📚'],
+    ['15분 집중 학습 달성! 훌륭한 집중력이에요 🎯','지속적인 학습으로 15분 완성! 👏','15분의 집중이 차이를 만들어요! 대단합니다 🦅'],
+  ],
+  time30:[
+    ['30분이나 공부했어요!!! 정말 최고야! 🏆','와! 30분 집중! 어마어마해요! 👏','30분 공부 완료! 수풀AI 스타!! 🌟🌟🌟'],
+    ['30분 집중 학습! 정말 놀라운 집중력이에요 🔥🔥','오늘 정말 열심히 했어요! 30분 달성! 💪💪','30분을 집중한 대단한 어린이! 앞으로 더 잘 할 거예요 🚀'],
+    ['30분 지속 학습 달성! 탁월한 집중력입니다 🎯','전문 학습자의 집중력! 30분 완성! 🦁','30분의 몰입이 실력의 차이를 만들어요! 최고입니다 💎'],
+  ],
+  streak3:[
+    ['3일 연속 공부했어요!! 정말 대단해요! 🔥','와! 3일 연속! 정말 훌륭한 어린이예요 🌈','3일 연속 수풀 공부! 최고최고최고!! 🏆'],
+    ['3일 연속 학습 달성! 정말 멋진 습관이에요 💪','꾸준함이 빛나는 3일 연속! 훌륭해요 🔥','3일 연속 공부하는 성실한 학생! 👏'],
+    ['3일 연속 학습! 습관의 힘을 느끼고 있어요 🎯','꾸준한 학습의 힘! 3일 연속 달성! ⭐','지속성이 전문성을 만들어요! 3일 연속 완성 🦉'],
+  ],
+};
+
+function showEffortToast(pts,type,data){
+  const cl=Math.min(Math.max(S.cogLevel||S.grade||3,1),6);
+  const tier=cl<=2?0:cl<=4?1:2;
+  const msgs=EFFORT_MSGS[type];
+  const arr=msgs?msgs[tier]:null;
+  const msg=arr?arr[Math.floor(Math.random()*arr.length)]:'열심히 하고 있어요! 🔥';
+
+  // 저학년(1~3학년): 조금 크게 / 고학년(4~6학년): 작게
+  const isYoung=cl<=3;
+  const pad=isYoung?'10px 16px':'7px 12px';
+  const fs=isYoung?'15px':'12px';
+  const br=isYoung?'18px':'14px';
+  const shadow=isYoung?'0 4px 16px rgba(238,90,36,.5)':'0 3px 10px rgba(238,90,36,.35)';
+
+  // 기존 토스트 위치 계산 (쌓이지 않게 offset)
+  const existing=document.querySelectorAll('.effort-chip').length;
+  const topOff=70+existing*52;
+
+  const el=document.createElement('div');
+  el.className='effort-chip';
+  el.title=msg; // 마우스오버시 전체 메시지
+  el.style=`position:fixed;top:${topOff}px;right:12px;
+    background:linear-gradient(135deg,#ff9f43,#ee5a24);color:white;
+    border-radius:${br};padding:${pad};font-weight:900;font-size:${fs};
+    box-shadow:${shadow};z-index:8888;cursor:default;
+    animation:effortBlink 0.5s ease-in-out 3;
+    white-space:nowrap;`;
+  el.innerHTML=`🔥 +${pts}`;
+  document.body.appendChild(el);
+  // 깜빡임 끝난 후 잠시 유지 → 페이드아웃
+  setTimeout(()=>{
+    el.style.transition='opacity .5s';
+    el.style.opacity='0';
+    setTimeout(()=>el.remove(),500);
+  },2800);
+}
+
+function updateEffortDisplay(){
+  const d=getEffortData(S.studentName);
+  const el=document.getElementById('effort-display');
+  if(el) el.textContent='🔥 '+(d.total||0);
+}
+
+function showEffortInfo(){
+  const d=getEffortData(S.studentName);
+  const cl=S.cogLevel||S.grade||3;
+  const streakMsg=d.streak>=7?'🏆 7일 연속 대단해요!':d.streak>=3?'🔥 '+d.streak+'일 연속 중!':d.streak+'일째 공부 중';
+  const tierLabel=['','🌱 씨앗','🌿 새싹','🌲 나무','🦊 여우','🦅 독수리','🦁 사자'][Math.min(Math.round(d.total/20)+1,6)];
+  showToast(`🔥 노력 점수 ${d.total||0}점 (오늘 ${d.today||0}점) · ${streakMsg} · ${tierLabel}`);
+}
+
+// 세션 타이머 — 앱 로딩 시 시작
+S._sessStart=S._sessStart||Date.now();
+S._effTimers=S._effTimers||{5:false,15:false,30:false};
+function _effortTick(){
+  if(!S.studentName||S.isTeacher) return;
+  const mins=Math.floor((Date.now()-S._sessStart)/60000);
+  if(mins>=5&&!S._effTimers[5]){S._effTimers[5]=true;addEffort('time5',2);}
+  if(mins>=15&&!S._effTimers[15]){S._effTimers[15]=true;addEffort('time15',3);}
+  if(mins>=30&&!S._effTimers[30]){S._effTimers[30]=true;addEffort('time30',5);}
+}
+setInterval(_effortTick,60000);
+
+// 연속 접속 체크 (로그인 시 호출)
+function checkStreakBonus(){
+  if(!S.studentName||S.isTeacher) return;
+  const d=getEffortData(S.studentName);
+  const today=new Date().toDateString();
+  if(d.lastDate===today) return; // 오늘 이미 체크
+  const yest=new Date(Date.now()-86400000).toDateString();
+  const newStreak=(d.lastDate===yest)?(d.streak||0)+1:1;
+  d.streak=newStreak;
+  d.lastDate=today;
+  d.today=d.today||0;
+  // 스트릭 보너스
+  if(newStreak===3){ d.total=(d.total||0)+5; d.today+=5; saveEffortData(d,S.studentName); setTimeout(()=>addEffort('streak3',0),1000); }
+  else if(newStreak===7||newStreak===14||newStreak===30){ d.total=(d.total||0)+10; d.today+=10; saveEffortData(d,S.studentName); setTimeout(()=>addEffort('streak3',0),1000); }
+  else { saveEffortData(d,S.studentName); }
+  updateEffortDisplay();
+  if(newStreak>=2){
+    setTimeout(()=>{
+      const cl=S.cogLevel||S.grade||3;
+      const msgs=cl<=2?['오늘도 왔어요! 연속 '+newStreak+'일째예요! 🌟']:
+        cl<=4?['연속 '+newStreak+'일 공부 중이에요! 정말 대단해요 🔥']:
+        ['연속 '+newStreak+'일 학습 중입니다! 훌륭한 습관이에요 💎'];
+      showToast(msgs[0]);
+    },1500);
+  }
+}
 function renderSelectPanel(){
   const students=getStudents();
   const el=document.getElementById('student-btns');
@@ -2432,19 +2831,51 @@ function renderHistory(){
       <div style="font-size:14px;">문제를 풀면 여기에 저장돼요 😊</div>
     </div>`;return;
   }
+  // 노력 점수 요약 카드
+  const effortD=getEffortData(S.studentName);
+  const effortTotal=effortD.total||0;
+  const effortToday=effortD.today||0;
+  const effortStreak=effortD.streak||0;
+  const tierIdx=Math.min(Math.floor(effortTotal/20),5);
+  const tierLabels=['🌱 씨앗','🌿 새싹','🌲 나무','🦊 여우','🦅 독수리','🦁 사자'];
+  const effortCard=`<div style="background:linear-gradient(135deg,#fff4e6,#ffe8cc);border:2px solid #ff9f43;border-radius:18px;padding:16px;margin-bottom:16px;">
+    <div style="font-weight:900;font-size:15px;color:#d35400;margin-bottom:10px;">🔥 나의 노력 기록</div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;">
+      <div style="flex:1;min-width:80px;background:white;border-radius:12px;padding:10px;text-align:center;">
+        <div style="font-size:22px;font-weight:900;color:#ee5a24;">${effortTotal}</div>
+        <div style="font-size:11px;color:#888;margin-top:2px;">전체 노력 점수</div>
+      </div>
+      <div style="flex:1;min-width:80px;background:white;border-radius:12px;padding:10px;text-align:center;">
+        <div style="font-size:22px;font-weight:900;color:#ff9f43;">${effortToday}</div>
+        <div style="font-size:11px;color:#888;margin-top:2px;">오늘 획득</div>
+      </div>
+      <div style="flex:1;min-width:80px;background:white;border-radius:12px;padding:10px;text-align:center;">
+        <div style="font-size:22px;font-weight:900;color:#e67e22;">${effortStreak}일</div>
+        <div style="font-size:11px;color:#888;margin-top:2px;">연속 접속</div>
+      </div>
+      <div style="flex:1;min-width:80px;background:white;border-radius:12px;padding:10px;text-align:center;">
+        <div style="font-size:18px;">${tierLabels[tierIdx]}</div>
+        <div style="font-size:11px;color:#888;margin-top:2px;">노력 등급</div>
+      </div>
+    </div>
+    <div style="margin-top:10px;font-size:12px;color:#d35400;font-weight:700;">
+      💡 질문하기·복습·퀴즈·그리기·오래 공부하기로 노력 점수를 모아요!
+    </div>
+  </div>`;
+  el.innerHTML=effortCard;
   const now=Date.now();
   const GE=['','🐣','🐥','🐇','🦊','🦅','🦁'];
   // 다시 봐야 할 개념 (hard) 별도 섹션
   const hardList=hist.filter(r=>r.understanding==='hard');
   if(hardList.length>0){
-    el.innerHTML=`<div style="background:#fff0f0;border:2px solid #ffcccc;border-radius:16px;padding:14px;margin-bottom:14px;">
+    el.innerHTML+=`<div style="background:#fff0f0;border:2px solid #ffcccc;border-radius:16px;padding:14px;margin-bottom:14px;">
       <div style="font-weight:900;font-size:14px;color:#c0392b;margin-bottom:8px;">📌 다시 공부해야 할 개념 (${hardList.length}개)</div>
       ${hardList.map(r=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid #ffcccc;">
         <span style="font-size:13px;color:var(--deep);font-weight:600;">${r.concept||r.problem.slice(0,20)}</span>
         <button onclick="reviewRec('${r.id}')" style="background:#e74c3c;color:white;border:none;border-radius:10px;padding:4px 10px;font-size:11px;font-family:inherit;cursor:pointer;font-weight:700;">다시 보기</button>
       </div>`).join('')}
     </div>`;
-  } else { el.innerHTML=''; }
+  }
 
   el.innerHTML+=hist.map(r=>{
     const due=(r.reviews||[]).some(rv=>!rv.done&&rv.due<=now);
@@ -2481,6 +2912,7 @@ function renderHistory(){
   }).join('');
 }
 function reviewRec(id){
+  addEffort('sess_review',3); // 🔥 복습 노력
   const rec=getHist(S.studentName).find(r=>String(r.id)===String(id));
   if(!rec)return;
   S.prob=rec.problem;S.htype=rec.htype;S.grade=rec.grade;S.curRecord=rec;
@@ -2657,6 +3089,7 @@ function closeStarOverlay(){
 // ══════════════════════════
 let _drawCtx=null,_drawing=false,_lastX=0,_lastY=0;
 function openDrawCanvas(){
+  addEffort('sess_draw',1); // 🔥 직접 그리기 노력
   const modal=document.getElementById('draw-modal');
   if(!modal)return;
   modal.style.display='flex';
