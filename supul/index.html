@@ -364,6 +364,31 @@ window._fbSaveCache = async function(grade, prob, htype, expHTML, ytSearches, co
   }catch(e){ console.warn('캐시 저장 실패:', e.message); }
 };
 
+// ── 공유 저장 (QR용 단축 ID) ──
+window._fbSaveShare = async function(code){
+  try{
+    // 8자리 랜덤 ID 생성
+    const id = Math.random().toString(36).slice(2,6) + Math.random().toString(36).slice(2,6);
+    const ref = doc(_db, 'shares', id);
+    await setDoc(ref, {
+      code,
+      createdAt: serverTimestamp(),
+      expiresAt: new Date(Date.now() + 30*24*3600*1000) // 30일 유효
+    });
+    return id;
+  }catch(e){ console.warn('공유 저장 실패:', e.message); return null; }
+};
+
+// ── 공유 불러오기 ──
+window._fbGetShare = async function(shareId){
+  try{
+    const ref = doc(_db, 'shares', shareId);
+    const snap = await getDoc(ref);
+    if(snap.exists()) return snap.data().code;
+  }catch(e){ console.warn('공유 불러오기 실패:', e.message); }
+  return null;
+};
+
 console.log('✅ Firebase Firestore 연결 완료');
 </script>
 </head>
@@ -913,6 +938,7 @@ console.log('✅ Firebase Firestore 연결 완료');
     <!-- QR 코드 -->
     <div id="share-qr-wrap" style="display:flex;justify-content:center;margin-bottom:16px;">
       <div id="share-qr" style="width:200px;height:200px;border:3px solid var(--sage);border-radius:16px;overflow:hidden;display:flex;align-items:center;justify-content:center;background:white;"></div>
+      <div id="share-qr-url-hint" style="font-size:11px;color:var(--mid);margin-top:6px;"></div>
     </div>
 
     <!-- 공유 코드 표시 -->
@@ -1239,20 +1265,30 @@ function shareResult(){
     // 공유 모달 열기
     document.getElementById('share-code-display').textContent=compressed;
     document.getElementById('share-size').textContent=compressed.length.toLocaleString();
-    // QR 생성
+    // QR: Firebase에 저장 → 짧은 URL로 QR 생성
     const qrDiv=document.getElementById('share-qr');
-    qrDiv.innerHTML='';
-    try{
-      new QRCode(qrDiv,{
-        text:compressed,
-        width:196,height:196,
-        colorDark:'#2a2e2c',colorLight:'#ffffff',
-        correctLevel:QRCode.CorrectLevel.M
-      });
-    }catch(e){
-      qrDiv.innerHTML='<div style="font-size:12px;color:var(--mid);padding:20px;">QR 생성 실패<br>(코드 복사 후 직접 전달)</div>';
-    }
+    qrDiv.innerHTML='<div style="font-size:12px;color:var(--mid);padding:20px;">QR 생성 중... ⏳</div>';
     document.getElementById('share-modal').style.display='flex';
+    if(window._fbSaveShare){
+      window._fbSaveShare(compressed).then(shareId=>{
+        qrDiv.innerHTML='';
+        if(shareId){
+          const shareURL=location.origin+location.pathname+'?share='+shareId;
+          document.getElementById('share-qr-url-hint').textContent='ID: '+shareId;
+          try{
+            new QRCode(qrDiv,{text:shareURL,width:196,height:196,
+              colorDark:'#2a2e2c',colorLight:'#ffffff',correctLevel:QRCode.CorrectLevel.M});
+          }catch(e){
+            qrDiv.innerHTML='<div style="font-size:12px;color:var(--mid);padding:10px;">QR: '+shareURL+'</div>';
+          }
+        } else {
+          // Firebase 실패 시 fallback: 코드 길이 경고
+          qrDiv.innerHTML='<div style="font-size:12px;color:var(--mid);padding:16px;text-align:center;">⚠️ 서버 저장 실패<br>코드를 직접 복사해 전달해주세요</div>';
+        }
+      });
+    } else {
+      qrDiv.innerHTML='<div style="font-size:12px;color:var(--mid);padding:16px;">Firebase 연결 대기 중...</div>';
+    }
   }catch(e){
     showToast('⚠️ 공유 코드 생성 실패: '+e.message);
   }
@@ -2778,11 +2814,35 @@ function renderWorksheet(text,grade,curUnit,nextUnit,displayName,studentName,tod
 // URL 파라미터로 학생 자동 로그인
 function checkURLAutoLogin(){
   const params=new URLSearchParams(window.location.search);
+  const shareId=params.get('share');
   const name=params.get('n');
   const grade=parseInt(params.get('g'));
+
+  // ── QR로 공유된 설명 불러오기 ──
+  if(shareId){
+    if(window._fbGetShare){
+      initMain(); showScreen('s-main');
+      showToast('⏳ 공유 설명 불러오는 중...');
+      window._fbGetShare(shareId).then(code=>{
+        if(!code){showToast('⚠️ 공유 내용을 찾을 수 없어요 (만료됐을 수 있어요)');return;}
+        try{
+          const json=atob(code.replace(/^SP:/,''));
+          const data=JSON.parse(json);
+          if(!data||!data.html){showToast('⚠️ 공유 코드 형식 오류');return;}
+          document.getElementById('exp-area').innerHTML=data.html;
+          showScreen('s-explain');
+          showToast('✅ 설명을 받았어요! 🎉');
+        }catch(e){showToast('⚠️ 불러오기 실패: '+e.message);}
+      });
+    } else {
+      // Firebase 아직 로딩 중이면 잠시 후 재시도
+      setTimeout(()=>checkURLAutoLogin(), 1500);
+    }
+    return;
+  }
+
   if(!name) return;
   const normalized=normName(name);
-  // 학생 없으면 자동 등록
   const existing=getStudent(normalized);
   if(!existing && normalized){
     upsertStudent({name:normalized,grade:grade||3,stars:0,registeredAt:Date.now()});
