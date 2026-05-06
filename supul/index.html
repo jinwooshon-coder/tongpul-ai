@@ -109,6 +109,17 @@ html,body{height:100%;font-family:'Noto Sans KR',sans-serif;background:var(--min
   .left-panel{position:sticky;top:84px;max-height:calc(100vh - 100px);overflow-y:auto;padding-right:4px;}
   /* 오른쪽 패널: 결과 영역 */
   .right-panel{min-height:calc(100vh - 120px);}
+  .step-guide{display:flex;flex-direction:column;gap:16px;padding:20px 24px;}
+  .step-card{background:white;border-radius:20px;padding:18px 20px;box-shadow:0 3px 14px rgba(110,181,166,.13);border:2px solid var(--sage);}
+  .step-num{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;background:var(--green);color:white;border-radius:50%;font-size:13px;font-weight:900;margin-right:8px;flex-shrink:0;}
+  .step-title{font-size:15px;font-weight:900;color:var(--deep);margin-bottom:14px;display:flex;align-items:center;}
+  .step-grade-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;}
+  .step-grade-grid .g-btn{padding:10px 4px 8px;font-size:12px;}
+  .step-grade-grid .g-btn .gem{font-size:22px;}
+  .step-input-hint{display:flex;align-items:center;gap:12px;background:var(--mint);border-radius:14px;padding:14px 16px;border:2px dashed var(--green-lt);}
+  .type-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+  .type-btn-r{background:white;border:2px solid var(--sage);border-radius:14px;padding:10px 8px;font-family:inherit;font-size:12px;font-weight:700;color:var(--deep);cursor:pointer;transition:all .2s;text-align:center;line-height:1.4;}
+  .type-btn-r:hover{background:var(--green);color:white;border-color:var(--green);transform:translateY(-2px);}
 }
 @media(min-width:1400px){
   .cont{padding:32px 60px;}
@@ -749,9 +760,55 @@ console.log('✅ Firebase Firestore 연결 완료');
     <!-- 큰 화면: 오른쪽 패널 (결과 영역) -->
     <div class="right-panel" id="right-panel">
       <div id="exp-area-main" style="display:none;"></div>
-      <div id="right-placeholder" style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:400px;color:var(--mid);text-align:center;gap:16px;">
-        <div style="font-size:80px;opacity:.3;">🌿</div>
-        <div style="font-size:18px;font-weight:700;opacity:.5;">왼쪽에서 문제를 입력하면<br>여기에 설명이 나와요!</div>
+      <div id="right-placeholder" class="step-guide">
+
+        <!-- ① 학년 선택 -->
+        <div class="step-card">
+          <div class="step-title"><span class="step-num">1</span>몇 학년이에요?</div>
+          <div class="step-grade-grid">
+            <button class="g-btn" onclick="selGrade(1)"><span class="gem">🐣</span>1학년</button>
+            <button class="g-btn" onclick="selGrade(2)"><span class="gem">🐥</span>2학년</button>
+            <button class="g-btn" onclick="selGrade(3)"><span class="gem">🐇</span>3학년</button>
+            <button class="g-btn" onclick="selGrade(4)"><span class="gem">🦊</span>4학년</button>
+            <button class="g-btn" onclick="selGrade(5)"><span class="gem">🦅</span>5학년</button>
+            <button class="g-btn" onclick="selGrade(6)"><span class="gem">🦁</span>6학년</button>
+          </div>
+        </div>
+
+        <!-- ② 단원 선택 -->
+        <div class="step-card">
+          <div class="step-title"><span class="step-num">2</span>어떤 단원이에요? <span id="unit-sel-label-r" style="font-size:11px;color:var(--mid);margin-left:8px;font-weight:500;"></span></div>
+          <div id="unit-chips-r" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+          <div id="subtopic-chips-r" style="display:flex;flex-wrap:wrap;gap:5px;margin-top:8px;"></div>
+        </div>
+
+        <!-- ③ 문제 입력 -->
+        <div class="step-card">
+          <div class="step-title"><span class="step-num">3</span>문제를 입력해요</div>
+          <div class="step-input-hint">
+            <span style="font-size:28px;">✏️</span>
+            <div>
+              <div style="font-size:13px;font-weight:700;color:var(--deep);margin-bottom:3px;">왼쪽 입력창에 질문을 써요</div>
+              <div style="font-size:11px;color:var(--mid);">📷 사진찍기, ✏️ 직접그리기, 🎙 말하기도 돼요!</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ④ 설명 유형 선택 -->
+        <div class="step-card">
+          <div class="step-title"><span class="step-num">4</span>어떤 설명이 필요해요?</div>
+          <div class="type-grid">
+            <button class="type-btn-r" onclick="processRes('hint')">💡 쉬운 힌트</button>
+            <button class="type-btn-r" onclick="processRes('step')">📝 단계별 풀이</button>
+            <button class="type-btn-r" onclick="processRes('visual')">🎨 그림으로</button>
+            <button class="type-btn-r" onclick="processRes('concept')">🔍 개념 설명</button>
+            <button class="type-btn-r" onclick="processRes('teach')">👨‍🏫 수업 준비</button>
+            <button class="type-btn-r" onclick="processRes('similar')">🔄 유사 문제</button>
+            <button class="type-btn-r" onclick="processRes('easier')">🐣 더 쉽게</button>
+            <button class="type-btn-r" onclick="processRes('explain')">📖 전체 설명</button>
+          </div>
+        </div>
+
       </div>
     </div>
 
@@ -1647,34 +1704,44 @@ function renderUnitChips(g, selectedUnit){
   const units = CURRICULUM[g]||[];
   const curU = selectedUnit !== undefined ? selectedUnit : guessCurrentUnit();
   const chipsEl = document.getElementById('unit-chips');
+  const chipsElR = document.getElementById('unit-chips-r');
   const labelEl = document.getElementById('unit-sel-label');
+  const labelElR = document.getElementById('unit-sel-label-r');
   if(!chipsEl) return;
-  chipsEl.innerHTML = units.map(u=>{
-    const isActive = u.u === curU;
-    return '<button onclick="selUnit('+g+','+u.u+')" style="'+
-      'padding:5px 10px;border-radius:20px;border:1.5px solid '+(isActive?'var(--green)':'var(--green-lt)')+';'+
-      'background:'+(isActive?'var(--green)':'#fff')+';color:'+(isActive?'#fff':'var(--deep)')+';'+
-      'font-size:12px;font-weight:'+(isActive?700:500)+';font-family:inherit;cursor:pointer;'+
-      'transition:all .2s;white-space:nowrap;">'+
-      u.u+'단원 '+u.t+'</button>';
-  }).join('');
+  const makeChips = (target, prefix) => {
+    target.innerHTML = units.map(u=>{
+      const isActive = u.u === curU;
+      return '<button onclick="selUnit('+g+','+u.u+')" style="'+
+        'padding:5px 10px;border-radius:20px;border:1.5px solid '+(isActive?'var(--green)':'var(--green-lt)')+';'+
+        'background:'+(isActive?'var(--green)':'#fff')+';color:'+(isActive?'#fff':'var(--deep)')+';'+
+        'font-size:12px;font-weight:'+(isActive?700:500)+';font-family:inherit;cursor:pointer;'+
+        'transition:all .2s;white-space:nowrap;">'+
+        u.u+'단원 '+u.t+'</button>';
+    }).join('');
+  };
+  makeChips(chipsEl, '');
+  if(chipsElR) makeChips(chipsElR, 'r');
   if(labelEl) labelEl.textContent = curU ? '현재: '+curU+'단원' : '';
+  if(labelElR) labelElR.textContent = curU ? curU+'단원 선택됨' : '선택해주세요';
   selUnit(g, curU, true);
 }
 function selUnit(g, unitNum, silent){
   S.selUnit = unitNum;
-  const chipsEl = document.getElementById('unit-chips');
-  if(chipsEl) chipsEl.querySelectorAll('button').forEach(function(b,i){
-    const u = (CURRICULUM[g]||[])[i];
-    const isActive = u && u.u===unitNum;
-    b.style.background = isActive?'var(--green)':'#fff';
-    b.style.color = isActive?'#fff':'var(--deep)';
-    b.style.borderColor = isActive?'var(--green)':'var(--green-lt)';
-    b.style.fontWeight = isActive?'700':'500';
+  ['unit-chips','unit-chips-r'].forEach(function(cid){
+    const chipsEl = document.getElementById(cid);
+    if(chipsEl) chipsEl.querySelectorAll('button').forEach(function(b,i){
+      const u = (CURRICULUM[g]||[])[i];
+      const isActive = u && u.u===unitNum;
+      b.style.background = isActive?'var(--green)':'#fff';
+      b.style.color = isActive?'#fff':'var(--deep)';
+      b.style.borderColor = isActive?'var(--green)':'var(--green-lt)';
+      b.style.fontWeight = isActive?'700':'500';
+    });
   });
   const unit = (CURRICULUM[g]||[]).find(function(u){return u.u===unitNum;});
   const subEl = document.getElementById('subtopic-chips');
-  if(!subEl||!unit) return;
+  const subElR = document.getElementById('subtopic-chips-r');
+  if(!subEl||!unit){if(subElR)subElR.innerHTML='';return;}
   const cl=S.cogLevel||g||3;
   let items;
   if(cl<=2){ // 1-2단계: 초보 (매우 쉽게)
@@ -1704,6 +1771,7 @@ function selUnit(g, unitNum, silent){
     html += '<button onclick="quickTopic(\''+t+'\')" style="padding:4px 10px;border-radius:14px;border:1px solid #d4e8e0;background:#f0faf7;color:var(--deep);font-size:11px;font-family:inherit;cursor:pointer;">'+t+'</button>';
   });
   subEl.innerHTML = html;
+  if(subElR) subElR.innerHTML = html;
 }
 function quickTopic(t){
   document.getElementById('inp-prob').value=t;
