@@ -1126,9 +1126,25 @@ function renderAdminStudents(){
   const CLN=['','🌱초보','🌿기초','🌲보통','🦊능숙','🦅심화','🦁최상'];
   el.innerHTML=`<div style="font-size:13px;color:var(--mid);margin-bottom:8px;">총 ${students.length}명 등록</div>`+
     students.map(s=>{
-      const todayCount=getHist(s.name).filter(r=>r.date===today).length;
+      const hist=getHist(s.name);
+      const todayCount=hist.filter(r=>r.date===today).length;
+      const hardItems=hist.filter(r=>r.understanding==='hard').slice(0,3);
+      const greatCount=hist.filter(r=>r.understanding==='great').length;
+      const okCount=hist.filter(r=>r.understanding==='ok').length;
+      const hardCount=hist.filter(r=>r.understanding==='hard').length;
       const cl=s.cogLevel||s.grade||3;
       const sn=s.name.replace(/'/g,"\'");
+      const undBar=hist.filter(r=>r.understanding).length>0?`
+        <div style="display:flex;gap:4px;align-items:center;margin-bottom:6px;flex-wrap:wrap;">
+          <span style="font-size:10px;color:var(--mid);">이해도:</span>
+          ${greatCount>0?`<span style="font-size:10px;background:#e8f8f0;color:#2ecc71;border-radius:8px;padding:2px 6px;font-weight:700;">😊 완전이해 ${greatCount}건</span>`:''}
+          ${okCount>0?`<span style="font-size:10px;background:#fef9e0;color:#f0b429;border-radius:8px;padding:2px 6px;font-weight:700;">🤔 조금어려움 ${okCount}건</span>`:''}
+          ${hardCount>0?`<span style="font-size:10px;background:#fff0f0;color:#e74c3c;border-radius:8px;padding:2px 6px;font-weight:700;">😢 어려움 ${hardCount}건</span>`:''}
+        </div>
+        ${hardItems.length>0?`<div style="font-size:10px;color:#c0392b;background:#fff0f0;border-radius:8px;padding:5px 8px;margin-bottom:6px;">
+          📌 다시 봐야 할 것: ${hardItems.map(r=>r.concept||r.problem.slice(0,15)).join(' · ')}
+        </div>`:''}
+      `:'';
       return `<div style="padding:10px;background:var(--mint);border-radius:12px;margin-bottom:6px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
           <div>
@@ -1138,6 +1154,7 @@ function renderAdminStudents(){
           </div>
           <span style="font-size:11px;background:${todayCount>0?'var(--green)':'var(--gray)'};color:white;border-radius:10px;padding:2px 8px;font-weight:700;">오늘 ${todayCount}건</span>
         </div>
+        ${undBar}
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
           <span style="font-size:11px;color:var(--mid);font-weight:600;">🧠 설명수준:</span>
           ${[1,2,3,4,5,6].map(lv=>`<button onclick="setCogLevel('${sn}',${lv})" style="
@@ -1918,8 +1935,7 @@ function processRes(text,htype,prob){
   if(window._fbSaveCache) window._fbSaveCache(S.grade,prob,htype,expHTML,ytSearches,concept);
   renderExp(expHTML,htype,ytSearches);
   setLoad(false);
-  // ⭐ 별 자동 지급
-  setTimeout(()=> awardStar(1, '새로운 개념을 배웠어요! 👏'), 600);
+  // ⭐ 별은 이해도 평가 후 차등 지급 (자동 지급 제거)
 }
 
 // ══════════════════════════
@@ -1990,6 +2006,60 @@ function speakExp(){
     window.speechSynthesis.addEventListener('voiceschanged',doSpeak,{once:true});
   } else { doSpeak(); }
 }
+// ══════════════════════════════════
+// 📊 이해도 평가 제출
+// ══════════════════════════════════
+function submitUnderstanding(level){
+  // 이미 평가했으면 무시
+  const card=document.getElementById('understanding-card');
+  if(card && card.dataset.done==='1') return;
+
+  const starMap={great:5, ok:3, hard:1};
+  const labelMap={great:'😊 완전히 이해', ok:'🤔 조금 어려움', hard:'😢 다시 봐야 함'};
+  const msgMap={
+    great:'완벽해요! 혼자서도 할 수 있어요! 🏆',
+    ok:'잘 했어요! 조금씩 더 연습하면 돼요 💪',
+    hard:'괜찮아요! 어려운 건 다시 보면 돼요 😊'
+  };
+  const stars=starMap[level]||1;
+
+  // 히스토리에 이해도 저장
+  if(S.curRecord){
+    const hist=getHist(S.studentName);
+    const idx=hist.findIndex(r=>r.id===S.curRecord.id);
+    if(idx>=0){
+      hist[idx].understanding=level;
+      hist[idx].stars=stars;
+      hist[idx].understoodAt=new Date().toISOString();
+      // hard면 복습 간격 짧게 재조정
+      if(level==='hard'){
+        hist[idx].reviews=[
+          {label:'1시간 후 복습',due:Date.now()+3600*1000,done:false},
+          {label:'오늘 복습',due:Date.now()+6*3600*1000,done:false},
+          {label:'내일 복습',due:Date.now()+24*3600*1000,done:false},
+        ];
+      }
+      saveHistData(hist,S.studentName);
+    }
+  }
+
+  // 별 지급
+  awardStar(stars, msgMap[level]);
+
+  // 카드 완료 처리
+  if(card){
+    card.dataset.done='1';
+    card.innerHTML=`
+      <div style="text-align:center;padding:14px;">
+        <div style="font-size:36px;margin-bottom:8px;">${level==='great'?'🏆':level==='ok'?'💪':'🌱'}</div>
+        <div style="font-weight:900;font-size:16px;color:var(--deep);">${labelMap[level]}</div>
+        <div style="font-size:13px;color:var(--mid);margin-top:6px;">${msgMap[level]}</div>
+        <div style="margin-top:10px;font-size:20px;color:var(--star);">${'⭐'.repeat(stars)}</div>
+        ${level==='hard'?'<div style="margin-top:10px;font-size:12px;background:#fff0f0;border-radius:10px;padding:8px;color:#c0392b;">📌 이 개념이 복습 목록에 추가됐어요!</div>':''}
+      </div>`;
+  }
+}
+
 // ══════════════════════════════════
 // ✏️ 학생 답 확인 (AI 채점)
 // ══════════════════════════════════
@@ -2137,6 +2207,29 @@ const expHTML_TPL=(html,htype)=>`
     <button onclick="checkStudentAns()" style="margin-top:10px;width:100%;background:#f9ca74;border:none;border-radius:14px;padding:12px;font-family:inherit;font-size:15px;font-weight:900;color:var(--deep);cursor:pointer;">
       🔍 확인해줘!
     </button>
+  </div>
+  <div class="card" id="understanding-card" style="border:2px solid var(--green);background:linear-gradient(135deg,#f0faf7,#e4f5ef);">
+    <div style="text-align:center;margin-bottom:12px;">
+      <div style="font-size:18px;font-weight:900;color:var(--deep);margin-bottom:4px;">📊 오늘 공부 어땠어요?</div>
+      <div style="font-size:13px;color:var(--mid);">솔직하게 골라봐요 — 선생님이 도움 받을 수 있어요!</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <button onclick="submitUnderstanding('great')" class="und-btn" style="background:linear-gradient(135deg,#6eb5a6,#4a9e8f);color:white;border:none;border-radius:16px;padding:14px;font-family:inherit;font-size:15px;font-weight:700;cursor:pointer;text-align:left;display:flex;align-items:center;gap:10px;">
+        <span style="font-size:24px;">😊</span>
+        <div><div style="font-weight:900;">완전히 이해했어요!</div><div style="font-size:12px;opacity:.85;">혼자서도 설명할 수 있을 것 같아요</div></div>
+        <span style="margin-left:auto;font-size:13px;background:rgba(255,255,255,.3);border-radius:10px;padding:3px 8px;">⭐×5</span>
+      </button>
+      <button onclick="submitUnderstanding('ok')" class="und-btn" style="background:linear-gradient(135deg,#f9ca74,#f0b429);color:var(--deep);border:none;border-radius:16px;padding:14px;font-family:inherit;font-size:15px;font-weight:700;cursor:pointer;text-align:left;display:flex;align-items:center;gap:10px;">
+        <span style="font-size:24px;">🤔</span>
+        <div><div style="font-weight:900;">조금 어려웠어요</div><div style="font-size:12px;opacity:.75;">대충 알겠는데 더 봐야 할 것 같아요</div></div>
+        <span style="margin-left:auto;font-size:13px;background:rgba(255,255,255,.4);border-radius:10px;padding:3px 8px;">⭐×3</span>
+      </button>
+      <button onclick="submitUnderstanding('hard')" class="und-btn" style="background:linear-gradient(135deg,#b2a7b8,#9a8fa6);color:white;border:none;border-radius:16px;padding:14px;font-family:inherit;font-size:15px;font-weight:700;cursor:pointer;text-align:left;display:flex;align-items:center;gap:10px;">
+        <span style="font-size:24px;">😢</span>
+        <div><div style="font-weight:900;">잘 모르겠어요</div><div style="font-size:12px;opacity:.85;">다시 봐야 할 것 같아요</div></div>
+        <span style="margin-left:auto;font-size:13px;background:rgba(255,255,255,.3);border-radius:10px;padding:3px 8px;">⭐×1</span>
+      </button>
+    </div>
   </div>\`;
 
 function isWideScreen(){return window.innerWidth>=1024;}
@@ -2283,9 +2376,12 @@ function saveHist(d){
   const hist=getHist(S.studentName);
   const now=Date.now();
   const rec={id:now,date:new Date().toLocaleDateString('ko-KR'),
+    savedAt:new Date().toISOString(),
     studentName:S.studentName,
     grade:d.grade,concept:d.concept,problem:d.problem,htype:d.htype,
     ytSearches:d.ytSearches,ytClicked:[],expHTML:d.expHTML,
+    understanding:null, // 'great'|'ok'|'hard' — 이해도 평가 후 저장
+    stars:0, // 획득 별 수
     reviews:[
       {label:'오늘 복습',due:now+2*3600*1000,done:false},
       {label:'내일 복습',due:now+24*3600*1000,done:false},
@@ -2338,16 +2434,32 @@ function renderHistory(){
   }
   const now=Date.now();
   const GE=['','🐣','🐥','🐇','🦊','🦅','🦁'];
-  el.innerHTML=hist.map(r=>{
+  // 다시 봐야 할 개념 (hard) 별도 섹션
+  const hardList=hist.filter(r=>r.understanding==='hard');
+  if(hardList.length>0){
+    el.innerHTML=`<div style="background:#fff0f0;border:2px solid #ffcccc;border-radius:16px;padding:14px;margin-bottom:14px;">
+      <div style="font-weight:900;font-size:14px;color:#c0392b;margin-bottom:8px;">📌 다시 공부해야 할 개념 (${hardList.length}개)</div>
+      ${hardList.map(r=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid #ffcccc;">
+        <span style="font-size:13px;color:var(--deep);font-weight:600;">${r.concept||r.problem.slice(0,20)}</span>
+        <button onclick="reviewRec('${r.id}')" style="background:#e74c3c;color:white;border:none;border-radius:10px;padding:4px 10px;font-size:11px;font-family:inherit;cursor:pointer;font-weight:700;">다시 보기</button>
+      </div>`).join('')}
+    </div>`;
+  } else { el.innerHTML=''; }
+
+  el.innerHTML+=hist.map(r=>{
     const due=(r.reviews||[]).some(rv=>!rv.done&&rv.due<=now);
     const ytC=(r.ytClicked||[]).length;
+    const undIcon={'great':'😊','ok':'🤔','hard':'😢'}[r.understanding]||'';
+    const undBg={'great':'#e8f8f0','ok':'#fef9e0','hard':'#fff0f0'}[r.understanding]||'';
+    const undLabel={'great':'완전 이해','ok':'조금 어려움','hard':'다시 봐야 함'}[r.understanding]||'';
     return `
-    <div class="hist-card ${due?'due':''}">
+    <div class="hist-card ${due?'due':''}" style="${r.understanding==='hard'?'border-left:4px solid #e74c3c;':''}">
       <div class="hist-date">${r.date}</div>
       <div class="hist-con">${r.concept}</div>
       <div class="hist-prob">${r.problem}</div>
       <div class="htags">
         <span class="htag ht-grade">${GE[r.grade]||''} ${r.grade}학년</span>
+        ${r.understanding?`<span style="background:${undBg};border-radius:10px;padding:3px 8px;font-size:11px;font-weight:700;">${undIcon} ${undLabel} ${'⭐'.repeat(r.stars||0)}</span>`:'<span style="font-size:11px;color:var(--mid);">평가 전</span>'}
         ${due?`<span class="htag ht-review">🔔 복습 필요</span>`:`<span class="htag ht-done">✅ 완료</span>`}
         ${ytC?`<span class="htag ht-yt">📺 ${ytC}개</span>`:''}
       </div>
