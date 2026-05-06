@@ -2156,14 +2156,36 @@ function openDrawCanvas(){
   _drawCtx.lineWidth=4;
   _drawCtx.lineCap='round';
   _drawCtx.lineJoin='round';
-  // 마우스
-  canvas.onmousedown=e=>{_drawing=true;const r=canvas.getBoundingClientRect();_lastX=e.clientX-r.left;_lastY=e.clientY-r.top;};
-  canvas.onmousemove=e=>{if(!_drawing)return;const r=canvas.getBoundingClientRect();const x=e.clientX-r.left,y=e.clientY-r.top;_drawCtx.beginPath();_drawCtx.moveTo(_lastX,_lastY);_drawCtx.lineTo(x,y);_drawCtx.stroke();_lastX=x;_lastY=y;};
-  canvas.onmouseup=canvas.onmouseleave=()=>{_drawing=false;};
-  // 터치
-  canvas.ontouchstart=e=>{e.preventDefault();_drawing=true;const r=canvas.getBoundingClientRect();const t=e.touches[0];_lastX=t.clientX-r.left;_lastY=t.clientY-r.top;};
-  canvas.ontouchmove=e=>{e.preventDefault();if(!_drawing)return;const r=canvas.getBoundingClientRect();const t=e.touches[0];const x=t.clientX-r.left,y=t.clientY-r.top;_drawCtx.beginPath();_drawCtx.moveTo(_lastX,_lastY);_drawCtx.lineTo(x,y);_drawCtx.stroke();_lastX=x;_lastY=y;};
-  canvas.ontouchend=()=>{_drawing=false;};
+
+  // ── Pointer Events: 마우스 + 터치 + 삼성펜 통합 ──
+  // 좌표 스케일: canvas 내부 px / CSS 표시 px
+  function _getPos(e){
+    const r=canvas.getBoundingClientRect();
+    const scaleX=canvas.width/r.width;
+    const scaleY=canvas.height/r.height;
+    return {x:(e.clientX-r.left)*scaleX, y:(e.clientY-r.top)*scaleY};
+  }
+  // 이전 핸들러 제거
+  canvas.onmousedown=canvas.onmousemove=canvas.onmouseup=canvas.onmouseleave=null;
+  canvas.ontouchstart=canvas.ontouchmove=canvas.ontouchend=null;
+
+  canvas.addEventListener('pointerdown',function(e){
+    e.preventDefault();
+    canvas.setPointerCapture(e.pointerId);
+    _drawing=true;
+    const p=_getPos(e);_lastX=p.x;_lastY=p.y;
+  },{passive:false});
+  canvas.addEventListener('pointermove',function(e){
+    if(!_drawing)return;
+    e.preventDefault();
+    const p=_getPos(e);
+    _drawCtx.beginPath();_drawCtx.moveTo(_lastX,_lastY);_drawCtx.lineTo(p.x,p.y);_drawCtx.stroke();
+    _lastX=p.x;_lastY=p.y;
+  },{passive:false});
+  canvas.addEventListener('pointerup',function(e){_drawing=false;},{passive:true});
+  canvas.addEventListener('pointercancel',function(e){_drawing=false;},{passive:true});
+  canvas.addEventListener('pointerleave',function(e){_drawing=false;},{passive:true});
+
   // 컬러·굵기 컨트롤
   const colorPicker=document.getElementById('draw-color');
   const sizePicker=document.getElementById('draw-size');
