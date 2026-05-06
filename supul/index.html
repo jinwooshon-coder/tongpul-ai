@@ -406,6 +406,25 @@ window._fbGetShare = async function(shareId){
   return null;
 };
 
+// ── 선생님 API 키 저장 ──
+window._fbSaveTeacherKey = async function(apiKey){
+  try{
+    const ref = doc(_db, 'config', 'teacher');
+    await setDoc(ref, { apiKey, updatedAt: serverTimestamp() }, { merge: true });
+    console.log('✅ 선생님 API 키 Firebase 저장 완료');
+  }catch(e){ console.warn('API 키 저장 실패:', e.message); }
+};
+
+// ── 선생님 API 키 불러오기 ──
+window._fbGetTeacherKey = async function(){
+  try{
+    const ref = doc(_db, 'config', 'teacher');
+    const snap = await getDoc(ref);
+    if(snap.exists() && snap.data().apiKey) return snap.data().apiKey;
+  }catch(e){ console.warn('API 키 불러오기 실패:', e.message); }
+  return null;
+};
+
 console.log('✅ Firebase Firestore 연결 완료');
 </script>
 </head>
@@ -1155,7 +1174,19 @@ function checkAdminPin(){
   const pin=document.getElementById('admin-pin').value.trim();
   if(pin===getAdminCode()){
     closeAdminAuth();
-    openAdminPanel();
+    // Firebase에서 API 키 자동 로드 (새 기기에서도 코드 입력만으로 사용 가능)
+    if(window._fbGetTeacherKey && !S.key){
+      window._fbGetTeacherKey().then(function(apiKey){
+        if(apiKey){
+          S.key=apiKey;
+          localStorage.setItem('sp_key',apiKey);
+          console.log('✅ Firebase에서 API 키 자동 로드 완료');
+        }
+        openAdminPanel();
+      });
+    } else {
+      openAdminPanel();
+    }
   } else {
     document.getElementById('admin-pin-err').textContent='코드가 틀렸어요. 다시 확인해주세요 🔒';
     document.getElementById('admin-pin').value='';
@@ -1260,6 +1291,8 @@ function adminSaveKey(){
   const k=document.getElementById('admin-apikey').value.trim();
   if(!k){showToast('API 키를 입력해주세요');return;}
   S.key=k;localStorage.setItem('sp_key',k);
+  // Firebase에도 저장 → 다른 기기에서 코드만 입력해도 자동 로드
+  if(window._fbSaveTeacherKey) window._fbSaveTeacherKey(k);
   document.getElementById('admin-key-status').textContent=`✅ 저장 완료 (${k.slice(0,12)}...)`;
   document.getElementById('admin-key-status').style.color='#2d7a4f';
   document.getElementById('admin-apikey').value='';
@@ -3079,6 +3112,8 @@ function saveKey(){
   const k=(document.getElementById('set-key')||{}).value||'';
   if(!k.trim()){showToast('API 키를 입력해주세요');return;}
   S.key=k.trim();localStorage.setItem('sp_key',S.key);
+  // Firebase에도 저장 (다른 기기에서 자동으로 불러올 수 있게)
+  if(window._fbSaveTeacherKey) window._fbSaveTeacherKey(S.key);
   showToast('API 키 저장 완료! ✅');
 }
 function saveSchool(){
