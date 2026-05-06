@@ -1932,27 +1932,120 @@ const HL={hint:'💡 힌트',step:'📝 단계별 풀이',visual:'🎨 그림 �
 // ① TTS — 설명 읽어주기
 // ══════════════════════════════════
 let _ttsActive=false;
-function speakExp(){
-  if(!window.speechSynthesis){showToast('이 기기는 읽어주기를 지원하지 않아요 😢');return;}
-  if(_ttsActive){window.speechSynthesis.cancel();_ttsActive=false;_updateTTSBtn(false);return;}
-  const body=document.querySelector('.exp-body');
-  if(!body){showToast('읽어줄 내용이 없어요');return;}
-  const text=(body.innerText||body.textContent).replace(/\s+/g,' ').trim();
-  if(!text)return;
-  window.speechSynthesis.cancel();
-  const utt=new SpeechSynthesisUtterance(text);
+// ── 최고 품질 한국어 음성 자동 선택 ──
+function _getBestKoVoice(){
+  const voices=window.speechSynthesis.getVoices();
+  // 우선순위: Google 한국어 > Microsoft 자연스러운 > 기타 ko-KR
+  const priority=[
+    v=>v.name.includes('Google') && v.lang.startsWith('ko'),
+    v=>v.name.includes('Microsoft') && v.name.includes('SunHi') && v.lang.startsWith('ko'),
+    v=>v.name.includes('Microsoft') && v.name.includes('Heami') && v.lang.startsWith('ko'),
+    v=>v.name.includes('Microsoft') && v.lang.startsWith('ko'),
+    v=>v.lang==='ko-KR',
+    v=>v.lang.startsWith('ko'),
+  ];
+  for(const fn of priority){ const v=voices.find(fn); if(v) return v; }
+  return null;
+}
+
+// ── 문장별 끊어 읽기 (자연스러운 호흡) ──
+let _ttsQueue=[], _ttsIdx=0;
+function _speakQueue(){
+  if(_ttsIdx>=_ttsQueue.length){_ttsActive=false;_updateTTSBtn(false);return;}
+  const utt=new SpeechSynthesisUtterance(_ttsQueue[_ttsIdx]);
   utt.lang='ko-KR';
   const cl=S.cogLevel||S.grade||3;
-  utt.rate=cl<=2?0.72:cl<=3?0.82:0.92;
-  utt.pitch=cl<=2?1.25:cl<=3?1.1:1.0;
-  utt.onend=()=>{_ttsActive=false;_updateTTSBtn(false);};
+  utt.rate=cl<=2?0.78:cl<=3?0.88:cl<=4?0.93:0.96;
+  utt.pitch=cl<=2?1.1:1.0; // 너무 높으면 로봇처럼 들림 — 최소화
+  utt.volume=1.0;
+  const bestVoice=_getBestKoVoice();
+  if(bestVoice) utt.voice=bestVoice;
+  utt.onend=()=>{
+    if(!_ttsActive) return;
+    _ttsIdx++;
+    // 문장 사이 자연스러운 호흡 (100ms)
+    setTimeout(_speakQueue, 100);
+  };
   utt.onerror=()=>{_ttsActive=false;_updateTTSBtn(false);};
-  // Chrome 버그: 15초 이상 말하면 멈추는 이슈 방지
-  const resumeTimer=setInterval(()=>{if(_ttsActive){window.speechSynthesis.pause();window.speechSynthesis.resume();}else{clearInterval(resumeTimer);}},10000);
   window.speechSynthesis.speak(utt);
-  _ttsActive=true;
-  _updateTTSBtn(true);
 }
+
+function speakExp(){
+  if(!window.speechSynthesis){showToast('이 기기는 읽어주기를 지원하지 않아요 😢');return;}
+  if(_ttsActive){window.speechSynthesis.cancel();_ttsActive=false;_ttsQueue=[];_ttsIdx=0;_updateTTSBtn(false);return;}
+  const body=document.querySelector('.exp-body');
+  if(!body){showToast('읽어줄 내용이 없어요');return;}
+  // 텍스트 정제: 이모지·특수문자 제거, 문장 단위로 분리
+  let raw=(body.innerText||body.textContent)
+    .replace(/[🎉🌟⭐💡📝🎨🔍🏗️🐣🦊🦅🦁🌿🌱🌲👏🍬🍕🎯🔭🧠🎓🏆📸✏️📷🎤🔊⏹]/gu,' ')
+    .replace(/\s+/g,' ').trim();
+  // 문장 분리 (마침표·느낌표·물음표 기준)
+  _ttsQueue=raw.split(/(?<=[.!?。！？])\s+/).filter(s=>s.trim().length>1);
+  if(!_ttsQueue.length){showToast('읽어줄 내용이 없어요');return;}
+  _ttsIdx=0;
+  window.speechSynthesis.cancel();
+  // 음성 로딩 대기 후 시작
+  const doSpeak=()=>{_ttsActive=true;_updateTTSBtn(true);_speakQueue();};
+  if(window.speechSynthesis.getVoices().length===0){
+    window.speechSynthesis.addEventListener('voiceschanged',doSpeak,{once:true});
+  } else { doSpeak(); }
+}
+// ══════════════════════════════════
+// ✏️ 학생 답 확인 (AI 채점)
+// ══════════════════════════════════
+async function checkStudentAns(){
+  const ans=(document.getElementById('student-ans-input')||{}).value||'';
+  if(!ans.trim()){showToast('답을 먼저 써봐요! ✏️');return;}
+  if(!S.key){showToast('API 키가 없어요');return;}
+  const resDiv=document.getElementById('student-ans-result');
+  if(resDiv){resDiv.style.display='block';resDiv.style.background='#f0faf7';
+    resDiv.innerHTML='<span style="color:var(--green);">🤔 확인 중...</span>';}
+  // 원본 설명 텍스트
+  const body=document.querySelector('.exp-body');
+  const expText=body?(body.innerText||body.textContent).slice(0,800):'';
+  const cl=S.cogLevel||S.grade||3;
+  const gradeNames=['','1학년','2학년','3학년','4학년','5학년','6학년'];
+  const prompt=`당신은 친절한 초등수학 선생님입니다.
+학생 학년: ${gradeNames[S.grade]||'초등학생'} (설명 수준: ${cl}단계)
+
+[방금 학생이 배운 내용 요약]
+${expText}
+
+[학생의 답변]
+"${ans}"
+
+다음 형식으로 짧게 응답하세요 (HTML, 이모지 사용, 학년 수준에 맞게):
+1. 맞으면: 칭찬 + 왜 맞는지 한 줄 설명
+2. 틀리면: 격려 + 힌트 한 줄 (정답 직접 알려주지 말 것)
+3. 부분 정답: 잘한 점 + 보완할 점
+
+${cl<=2?'아주 짧고 쉽게, 이모지 많이 쓰세요.':cl<=4?'친절하고 명확하게.':'논리적으로 설명해주세요.'}`;
+  try{
+    const res=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':S.key,
+        'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:300,
+        messages:[{role:'user',content:prompt}]})
+    });
+    const data=await res.json();
+    if(data.error) throw new Error(data.error.message);
+    const reply=data.content[0].text;
+    if(resDiv){
+      const isCorrect=reply.includes('맞아')||reply.includes('정확')||reply.includes('훌륭')
+        ||reply.includes('완벽')||reply.includes('Good')||reply.includes('맞습니다');
+      resDiv.style.background=isCorrect?'#e8f8f0':'#fff8e8';
+      resDiv.style.border='2px solid '+(isCorrect?'#6eb5a6':'#f9ca74');
+      resDiv.innerHTML=reply;
+    }
+    // 맞히면 별 지급
+    const isRight=reply.includes('맞아')||reply.includes('정확')||reply.includes('훌륭')||reply.includes('완벽');
+    if(isRight) setTimeout(()=>awardStar(1,'스스로 풀어냈어요! 💪'),400);
+  }catch(e){
+    if(resDiv){resDiv.style.background='#fff0f0';resDiv.innerHTML='⚠️ 오류: '+e.message;}
+  }
+}
+
 function _updateTTSBtn(active){
   document.querySelectorAll('.tts-read-btn').forEach(b=>{
     b.textContent=active?'⏹ 멈추기':'🔊 읽어줘!';
@@ -2035,7 +2128,16 @@ const expHTML_TPL=(html,htype)=>`
         📤 공유
       </button>
     </div>
-  </div>`;
+  </div>
+  <div class="card" style="border:2px solid #f9ca74;background:linear-gradient(135deg,#fffdf0,#fef9e0);">
+    <div style="font-weight:900;font-size:15px;color:var(--deep);margin-bottom:6px;">✏️ 내 답 써보기</div>
+    <div style="font-size:13px;color:var(--mid);margin-bottom:10px;">설명 속 질문에 답해봐요! AI 선생님이 바로 확인해줄게요 🎯</div>
+    <textarea id="student-ans-input" rows="3" placeholder="여기에 내 생각이나 답을 써봐요! 😊" style="width:100%;border:2px solid #f9ca74;border-radius:14px;padding:12px;font-family:inherit;font-size:15px;background:white;outline:none;resize:none;box-sizing:border-box;"></textarea>
+    <div id="student-ans-result" style="display:none;margin-top:10px;padding:14px;border-radius:12px;font-size:14px;line-height:1.7;"></div>
+    <button onclick="checkStudentAns()" style="margin-top:10px;width:100%;background:#f9ca74;border:none;border-radius:14px;padding:12px;font-family:inherit;font-size:15px;font-weight:900;color:var(--deep);cursor:pointer;">
+      🔍 확인해줘!
+    </button>
+  </div>\`;
 
 function isWideScreen(){return window.innerWidth>=1024;}
 
