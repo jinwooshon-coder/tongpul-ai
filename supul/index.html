@@ -34,6 +34,7 @@
 .star-overlay.show{display:flex;}
 .star-card{background:white;border-radius:32px;padding:40px 32px;text-align:center;max-width:300px;width:90%;box-shadow:0 12px 40px rgba(0,0,0,.2);}
 .star-em{font-size:64px;display:block;margin-bottom:10px;animation:star-pop .4s cubic-bezier(.36,.07,.19,.97);}
+@keyframes confetti-fall{0%{transform:translateY(0) rotate(0deg);opacity:.9;}100%{transform:translateY(110vh) rotate(720deg);opacity:0;}}
 @keyframes star-pop{0%{transform:scale(0);}60%{transform:scale(1.2);}100%{transform:scale(1);}}
 .star-title{font-size:22px;font-weight:900;color:var(--deep);margin-bottom:6px;}
 .star-sub{font-size:14px;color:var(--mid);margin-bottom:20px;}
@@ -608,6 +609,9 @@ console.log('✅ Firebase Firestore 연결 완료');
           </button>
           <button onclick="openDrawCanvas()" style="background:var(--candy-blue);border:none;border-radius:12px;padding:8px 14px;font-family:inherit;font-size:13px;font-weight:700;color:white;cursor:pointer;display:flex;align-items:center;gap:5px;" title="직접 그리기">
             ✏️ 직접 그리기
+          </button>
+          <button id="stt-btn" onclick="toggleSTT()" style="background:var(--candy-pink,#fd79a8);border:none;border-radius:12px;padding:8px 14px;font-family:inherit;font-size:13px;font-weight:700;color:white;cursor:pointer;display:flex;align-items:center;gap:5px;" title="음성으로 질문하기">
+            🎤 말하기
           </button>
         </div>
       </div>
@@ -1540,6 +1544,7 @@ function initMain(){
   const label=S.studentName?`${S.studentName} · ${S.school}`:S.school;
   document.getElementById('appbar-title').textContent=label;
   selGrade(S.grade);
+  _updatePlaceholder(S.grade); // 학년별 입력창 예시
   updateBadge();
   updateStarDisplay();
   initPasteHandler();
@@ -1553,6 +1558,22 @@ function selGrade(g){
   if(S.studentName && !S.isTeacher) upsertStudent({name:S.studentName,grade:g});
   document.querySelectorAll('.g-btn').forEach((b,i)=>b.classList.toggle('active',i+1===g));
   renderUnitChips(g);
+  _updatePlaceholder(g); // ③ 입력창 학년별 예시 변경
+}
+// ③ 학년별 입력창 placeholder
+function _updatePlaceholder(g){
+  const ta=document.getElementById('inp-prob');
+  if(!ta)return;
+  const ph=[
+    '',
+    '궁금한 게 있어요! 😊\n\n예) 사탕 3개에서 1개 먹으면 몇 개?\n예) 5보다 큰 수 알려줘\n예) 10 더하기 3이 뭐야?\n\n📸 교과서 사진 찍어도 돼요!',
+    '뭐가 궁금해요? 😊\n\n예) 구구단 3단 외우는 방법\n예) 12+25 계산하는 법\n예) 1m가 몇 cm야?\n\n📸 교과서 찍어도 되고, 🎤 말해도 돼요!',
+    '모르는 게 있어요? 😊\n\n예) 3÷2는 어떻게 계산해요?\n예) 분수가 뭔지 쉽게 설명해줘\n예) 1km는 몇 m야?\n\n📸 사진 찍기나 🎤 말하기 버튼도 있어요!',
+    '무엇이 궁금한가요? 😊\n\n예) 분수 덧셈 통분 방법\n예) 예각과 둔각 차이\n예) 소수 0.1+0.2 계산법\n\n📸 사진·✏️ 그리기·🎤 말하기 모두 가능!',
+    '어떤 문제가 어려운가요? 😊\n\n예) 약수와 배수 차이점\n예) 이분모 분수 덧셈\n예) 직육면체 겉넓이 공식\n\n📸 교과서 사진, 🎤 음성 입력 가능해요!',
+    '어떤 개념을 알고 싶나요? 😊\n\n예) 분수÷분수 원리 설명해줘\n예) 비율과 비례 차이\n예) 원의 넓이 공식이 왜 πr²야?\n\n📸 사진·🎤 음성·✏️ 직접 그리기 가능!'
+  ][g]||'모르는 문제를 써봐요! 😊';
+  ta.placeholder=ph;
 }
 function renderUnitChips(g, selectedUnit){
   const units = CURRICULUM[g]||[];
@@ -1586,12 +1607,30 @@ function selUnit(g, unitNum, silent){
   const unit = (CURRICULUM[g]||[]).find(function(u){return u.u===unitNum;});
   const subEl = document.getElementById('subtopic-chips');
   if(!subEl||!unit) return;
-  const items = [
-    unit.t+' 개념 설명해줘',
-    unit.t+' 예제 문제 풀어줘',
-    unit.t+' 왜 배우는지 알려줘',
-    unit.t+' 어려운 부분 쉽게 설명해줘',
-  ];
+  const cl=S.cogLevel||g||3;
+  let items;
+  if(cl<=2){ // 1-2단계: 초보 (매우 쉽게)
+    items=[
+      unit.t+' 가 뭔지 쉽게 말해줘 🐣',
+      unit.t+' 그림으로 보여줘 🎨',
+      unit.t+' 예를 들어줘 사탕이나 블록으로 🍬',
+      '손가락으로 '+unit.t+' 해보는 법 알려줘 🖐️',
+    ];
+  } else if(cl<=3){ // 3단계: 보통
+    items=[
+      unit.t+' 개념 쉽게 설명해줘',
+      unit.t+' 예제 같이 풀어줘',
+      unit.t+' 왜 배우는지 알려줘',
+      unit.t+' 어려운 부분 쉽게 설명해줘',
+    ];
+  } else { // 4-6단계: 능숙~최상
+    items=[
+      unit.t+' 핵심 개념 정리해줘',
+      unit.t+' 응용 문제 만들어줘',
+      unit.t+' 공식이 왜 성립하는지 설명해줘',
+      unit.t+' 자주 틀리는 실수 알려줘',
+    ];
+  }
   let html = '<div style="width:100%;font-size:11px;color:var(--mid);margin:4px 0 3px;">'+unit.u+'단원 · '+unit.t+' — 어떤 게 궁금해요?</div>';
   items.forEach(function(t){
     html += '<button onclick="quickTopic(\''+t+'\')" style="padding:4px 10px;border-radius:14px;border:1px solid #d4e8e0;background:#f0faf7;color:var(--deep);font-size:11px;font-family:inherit;cursor:pointer;">'+t+'</button>';
@@ -1852,6 +1891,81 @@ function processRes(text,htype,prob){
 // ══════════════════════════
 const HL={hint:'💡 힌트',step:'📝 단계별 풀이',visual:'🎨 그림 설명',concept:'🔍 개념 설명',
   teach:'👨‍🏫 수업 준비',similar:'🔄 유사 문제',easier:'🐣 더 쉬운 설명'};
+
+// ══════════════════════════════════
+// ① TTS — 설명 읽어주기
+// ══════════════════════════════════
+let _ttsActive=false;
+function speakExp(){
+  if(!window.speechSynthesis){showToast('이 기기는 읽어주기를 지원하지 않아요 😢');return;}
+  if(_ttsActive){window.speechSynthesis.cancel();_ttsActive=false;_updateTTSBtn(false);return;}
+  const body=document.querySelector('.exp-body');
+  if(!body){showToast('읽어줄 내용이 없어요');return;}
+  const text=(body.innerText||body.textContent).replace(/\s+/g,' ').trim();
+  if(!text)return;
+  window.speechSynthesis.cancel();
+  const utt=new SpeechSynthesisUtterance(text);
+  utt.lang='ko-KR';
+  const cl=S.cogLevel||S.grade||3;
+  utt.rate=cl<=2?0.72:cl<=3?0.82:0.92;
+  utt.pitch=cl<=2?1.25:cl<=3?1.1:1.0;
+  utt.onend=()=>{_ttsActive=false;_updateTTSBtn(false);};
+  utt.onerror=()=>{_ttsActive=false;_updateTTSBtn(false);};
+  // Chrome 버그: 15초 이상 말하면 멈추는 이슈 방지
+  const resumeTimer=setInterval(()=>{if(_ttsActive){window.speechSynthesis.pause();window.speechSynthesis.resume();}else{clearInterval(resumeTimer);}},10000);
+  window.speechSynthesis.speak(utt);
+  _ttsActive=true;
+  _updateTTSBtn(true);
+}
+function _updateTTSBtn(active){
+  document.querySelectorAll('.tts-read-btn').forEach(b=>{
+    b.textContent=active?'⏹ 멈추기':'🔊 읽어줘!';
+    b.style.background=active?'#ff7675':'var(--green)';
+  });
+}
+
+// ══════════════════════════════════
+// ② STT — 음성으로 질문하기
+// ══════════════════════════════════
+let _sttActive=false,_sttRecog=null;
+function toggleSTT(){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){showToast('이 브라우저는 음성 입력을 지원하지 않아요 😢');return;}
+  const btn=document.getElementById('stt-btn');
+  if(_sttActive){if(_sttRecog)_sttRecog.stop();_sttActive=false;if(btn){btn.textContent='🎤 말하기';btn.style.background='';}return;}
+  _sttRecog=new SR();
+  _sttRecog.lang='ko-KR';
+  _sttRecog.interimResults=false;
+  _sttRecog.maxAlternatives=1;
+  _sttRecog.onstart=()=>{_sttActive=true;if(btn){btn.textContent='🎤 듣는 중...';btn.style.background='#ff7675';}showToast('🎤 말씀해주세요!');};
+  _sttRecog.onresult=e=>{
+    const txt=e.results[0][0].transcript;
+    document.getElementById('inp-prob').value=txt;
+    showToast('✅ 받아쓰기 완료! 확인하고 물어보세요 😊');
+  };
+  _sttRecog.onend=()=>{_sttActive=false;if(btn){btn.textContent='🎤 말하기';btn.style.background='';}};
+  _sttRecog.onerror=e=>{_sttActive=false;if(btn){btn.textContent='🎤 말하기';btn.style.background='';}
+    showToast('음성 인식 오류: '+e.error+' — 마이크 권한을 확인해주세요');};
+  _sttRecog.start();
+}
+
+// ══════════════════════════════════
+// ④ Confetti 폭죽 🎉
+// ══════════════════════════════════
+function launchConfetti(){
+  const colors=['#6eb5a6','#dbd2a4','#f9ca74','#fd9644','#a29bfe','#fd79a8','#55efc4','#fdcb6e'];
+  const container=document.getElementById('confetti-container')||document.body;
+  for(let i=0;i<60;i++){
+    const el=document.createElement('div');
+    const size=Math.random()*10+6;
+    el.style.cssText=`position:fixed;top:-20px;left:${Math.random()*100}vw;width:${size}px;height:${size}px;
+      background:${colors[Math.floor(Math.random()*colors.length)]};border-radius:${Math.random()>0.5?'50%':'2px'};
+      z-index:99999;pointer-events:none;animation:confetti-fall ${1.5+Math.random()*2}s ease-in forwards;
+      transform:rotate(${Math.random()*360}deg);opacity:0.9;`;
+    document.body.appendChild(el);
+    setTimeout(()=>el.remove(),4000);
+  }
+}
 function copyExpText(){
   const expBody=document.querySelector('.exp-body');
   if(!expBody) return;
@@ -1875,6 +1989,9 @@ const expHTML_TPL=(html,htype)=>`
   <div class="card">
     <div class="exp-body">${html}</div>
     <div style="display:flex;gap:8px;margin-top:14px;">
+      <button class="tts-read-btn" onclick="speakExp()" style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;background:var(--green);color:white;border:none;border-radius:14px;padding:10px 14px;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;transition:all .2s;">
+        🔊 읽어줘!
+      </button>
       <button onclick="copyExpText()" style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;background:var(--sage);color:var(--deep);border:2px solid var(--green-lt);border-radius:14px;padding:10px 14px;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;transition:all .2s;" onmouseover="this.style.background='var(--green-lt)'" onmouseout="this.style.background='var(--sage)'">
         📋 복사
       </button>
@@ -2274,6 +2391,11 @@ function awardStar(n,msg){
     if(tot)tot.textContent=st.stars;
     ov.classList.add('show');
   }
+  // 저학년일수록 더 화려한 폭죽 🎉
+  const cl=S.cogLevel||S.grade||3;
+  if(cl<=2) setTimeout(launchConfetti,100); // 1-2단계: 폭죽 빵!
+  if(cl<=4) setTimeout(launchConfetti,400); // 1-4단계: 두 번
+  launchConfetti(); // 모든 학년
 }
 function closeStarOverlay(){
   const ov=document.getElementById('star-overlay');
