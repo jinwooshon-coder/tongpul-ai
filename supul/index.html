@@ -650,6 +650,12 @@ console.log('✅ Firebase Firestore 연결 완료');
 
     <!-- 선생님 액션 -->
     <div id="sec-tea" style="display:none;">
+      <!-- 학생 개인 설명 수준 조정 바 (선생님 전용) -->
+      <div id="cog-level-wrap" style="background:linear-gradient(135deg,#f0faf7,#e8f5f0);border:1.5px solid var(--green-lt);border-radius:14px;padding:10px 12px;margin-bottom:10px;display:none;">
+        <div style="font-size:11px;color:var(--mid);margin-bottom:6px;font-weight:600;">🧠 이 학생의 설명 수준 조정 <span id="cog-student-name" style="color:var(--green);"></span></div>
+        <div id="cog-level-bar" style="display:flex;flex-wrap:wrap;gap:5px;"></div>
+        <div style="font-size:10px;color:var(--mid);margin-top:5px;">학년과 달라도 OK — 이해 속도에 맞게 자유롭게 조정하세요</div>
+      </div>
       <div class="sl">👨‍🏫 선생님 메뉴</div>
       <div class="action-grid">
         <button class="ac-card" onclick="doAsk('teach')">
@@ -1087,16 +1093,29 @@ function renderAdminStudents(){
   if(!students.length){el.innerHTML='<div style="color:var(--mid);text-align:center;padding:12px;">등록된 학생 없음</div>';return;}
   const today=new Date().toLocaleDateString('ko-KR');
   const GE=['','🐣','🐥','🐇','🦊','🦅','🦁'];
+  const CLN=['','🌱초보','🌿기초','🌲보통','🦊능숙','🦅심화','🦁최상'];
   el.innerHTML=`<div style="font-size:13px;color:var(--mid);margin-bottom:8px;">총 ${students.length}명 등록</div>`+
     students.map(s=>{
       const todayCount=getHist(s.name).filter(r=>r.date===today).length;
-      return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px;background:var(--mint);border-radius:12px;margin-bottom:6px;">
-        <div>
-          <span style="font-size:16px;">${GE[s.grade||3]}</span>
-          <span style="font-weight:700;margin-left:4px;">${s.name}</span>
-          <span style="font-size:12px;color:var(--mid);margin-left:6px;">${s.grade||3}학년 · ⭐${s.stars||0}</span>
+      const cl=s.cogLevel||s.grade||3;
+      const sn=s.name.replace(/'/g,"\'");
+      return `<div style="padding:10px;background:var(--mint);border-radius:12px;margin-bottom:6px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+          <div>
+            <span style="font-size:16px;">${GE[s.grade||3]}</span>
+            <span style="font-weight:700;margin-left:4px;">${s.name}</span>
+            <span style="font-size:12px;color:var(--mid);margin-left:6px;">${s.grade||3}학년 · ⭐${s.stars||0}</span>
+          </div>
+          <span style="font-size:11px;background:${todayCount>0?'var(--green)':'var(--gray)'};color:white;border-radius:10px;padding:2px 8px;font-weight:700;">오늘 ${todayCount}건</span>
         </div>
-        <span style="font-size:11px;background:${todayCount>0?'var(--green)':'var(--gray)'};color:white;border-radius:10px;padding:2px 8px;font-weight:700;">오늘 ${todayCount}건</span>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+          <span style="font-size:11px;color:var(--mid);font-weight:600;">🧠 설명수준:</span>
+          ${[1,2,3,4,5,6].map(lv=>`<button onclick="setCogLevel('${sn}',${lv})" style="
+            padding:2px 7px;border-radius:10px;border:1.5px solid ${lv===cl?'var(--green)':'var(--green-lt)'};
+            background:${lv===cl?'var(--green)':'#fff'};color:${lv===cl?'#fff':'var(--deep)'};
+            font-size:10px;font-family:inherit;cursor:pointer;font-weight:${lv===cl?700:400};">
+            ${lv}${CLN[lv]}</button>`).join('')}
+        </div>
       </div>`;
     }).join('');
 }
@@ -1337,6 +1356,7 @@ function loginStudent(name){
   if(!st)return;
   S.studentName=name;
   S.grade=st.grade||3;
+  S.cogLevel=st.cogLevel||st.grade||3; // 개인별 인지 수준 (기본=학년)
   S.isDemo=false;
   initMain();showScreen('s-main');
 }
@@ -1460,6 +1480,34 @@ function renderStudentAdmin(){
     </div>`;
   }).join('');
 }
+function setCogLevel(name, lv){
+  const arr=getStudents();
+  const idx=arr.findIndex(s=>normName(s.name)===normName(name));
+  if(idx<0) return;
+  arr[idx].cogLevel=lv;
+  saveStudents(arr);
+  // 현재 로그인 학생이면 실시간 반영
+  if(S.studentName && normName(S.studentName)===normName(name)){
+    S.cogLevel=lv;
+    renderCogBar();
+    showToast('설명 수준이 '+['','🌱초보','🌿기초','🌲보통','🦊능숙','🦅심화','🦁최상'][lv]+'(으)로 바뀌었어요!');
+  }
+  renderAdminStudents(); // 관리자 목록 새로고침
+}
+
+function renderCogBar(){
+  const bar=document.getElementById('cog-level-bar');
+  if(!bar) return;
+  const cl=S.cogLevel||S.grade||3;
+  const labels=['','🌱초보','🌿기초','🌲보통','🦊능숙','🦅심화','🦁최상'];
+  const name=S.studentName||'';
+  bar.innerHTML=[1,2,3,4,5,6].map(lv=>`<button onclick="setCogLevel('${name}',${lv});setLoad(false);" style="
+    padding:3px 8px;border-radius:10px;border:1.5px solid ${lv===cl?'var(--green)':'var(--green-lt)'};
+    background:${lv===cl?'var(--green)':'#fff'};color:${lv===cl?'#fff':'var(--deep)'};
+    font-size:10px;font-family:inherit;cursor:pointer;font-weight:${lv===cl?700:400};white-space:nowrap;">
+    ${lv}${labels[lv]}</button>`).join('');
+}
+
 function deleteStudent(name){
   if(!confirm(`${name} 학생을 삭제할까요?`))return;
   const arr=getStudents().filter(s=>s.name!==name);
@@ -1560,6 +1608,17 @@ function setMode(m){
   document.getElementById('tab-tea').classList.toggle('active',m==='teacher');
   document.getElementById('sec-stu').style.display=m==='student'?'block':'none';
   document.getElementById('sec-tea').style.display=m==='teacher'?'block':'none';
+  // 선생님 모드 + 학생 선택된 경우 → 수준 바 표시
+  const wrap=document.getElementById('cog-level-wrap');
+  const nameEl=document.getElementById('cog-student-name');
+  if(wrap){
+    const showBar = m==='teacher' && S.studentName && !S.isTeacher;
+    wrap.style.display=showBar?'block':'none';
+    if(showBar){
+      if(nameEl) nameEl.textContent='('+S.studentName+')';
+      renderCogBar();
+    }
+  }
 }
 
 // ══════════════════════════
@@ -1627,8 +1686,10 @@ async function callClaude(prob,htype){
 }
 
 function buildSys(htype){
-  const gl=['','1학년(6~7세)','2학년(7~8세)','3학년(8~9세)','4학년(9~10세)','5학년(10~11세)','6학년(11~12세)'][S.grade];
-  const g = S.grade||3;
+  const g = S.grade||3; // 교육과정 학년 (문제 범위)
+  const cl = S.cogLevel||g; // 인지 발달 수준 (설명 방식, 학년과 다를 수 있음)
+  const gl=['','1학년(6~7세)','2학년(7~8세)','3학년(8~9세)','4학년(9~10세)','5학년(10~11세)','6학년(11~12세)'][g];
+  const clLabel=['','매우 초보(1단계)','기초(2단계)','보통(3단계)','능숙(4단계)','심화(5단계)','최상(6단계)'][cl];
 
   // ── 학년별 교육과정 ──
   const curriculum=[
@@ -1702,9 +1763,11 @@ function buildSys(htype){
 - 시각: 비례 그래프, 입체도형 단면도, 원 면적 유도 SVG.
 - 칭찬: "수학적으로 정확해요! 👏", "훌륭한 풀이예요! 🏆"
 - 확장: "이 개념은 중학교에서 ○○로 이어져요" 연결 제시.`
-  ]][g];
+  ]][cl];
 
   const base=`당신은 초등학교 ${gl} 학생을 위한 수학 선생님입니다.
+실제 학년은 ${gl}이지만, 이 학생의 인지 발달 수준은 【${clLabel}】로 설정되어 있습니다.
+교육과정 내용은 ${gl} 범위를 따르되, 설명 방식은 반드시 아래 인지 수준 지침을 따르세요.
 
 ${cogGuide}
 
@@ -1745,15 +1808,17 @@ JSON 5개:
 }
 function buildUser(prob,htype){
   const g=S.grade||3;
+  const cl=S.cogLevel||g; // 개인 인지 수준
   const ageTip=['',...[
-    '이 학생은 6~7세예요. 문장을 아주 짧게, 구체적인 사물로만 설명해주세요. 추상 개념은 절대 금지.',
-    '이 학생은 7~8세예요. 사물·그림·손가락 세기로 설명하고, 한 번에 한 단계씩만 알려주세요.',
-    '이 학생은 8~9세예요. 나누기·분수를 처음 배웁니다. 피자·초콜릿 같은 친숙한 예시로 설명해주세요.',
-    '이 학생은 9~10세예요. 논리적 순서로 설명하고, 흔한 실수를 짚어주세요.',
-    '이 학생은 10~11세예요. 추상 개념을 실생활과 연결하고, 공식의 원리를 설명해주세요.',
-    '이 학생은 11~12세예요. 수학 용어를 정확히 쓰고, 왜 성립하는지 논리적으로 설명해주세요.'
-  ]][g]||'';
-  return `${g}학년 학생이 궁금해하고 있어요.
+    '이 학생의 인지 수준은 매우 초보(1단계)예요. 문장을 아주 짧게, 구체적인 사물로만 설명하세요. 추상 개념 절대 금지.',
+    '이 학생의 인지 수준은 기초(2단계)예요. 사물·그림·손가락 세기로, 한 번에 한 단계씩만.',
+    '이 학생의 인지 수준은 보통(3단계)예요. 피자·초콜릿 같은 친숙한 예시로, 왜? 에 반드시 답하세요.',
+    '이 학생의 인지 수준은 능숙(4단계)예요. 논리적 순서로, 흔한 실수도 짚어주세요.',
+    '이 학생의 인지 수준은 심화(5단계)예요. 추상 개념을 실생활과 연결하고, 공식 원리를 설명하세요.',
+    '이 학생의 인지 수준은 최상(6단계)예요. 수학 용어를 정확히 쓰고, 논리적으로 깊이 설명하세요.'
+  ]][cl]||'';
+  const gradeNote = cl!==g ? `(${g}학년 교육과정 내용이지만, 설명은 ${cl}단계 수준으로 해주세요.)` : '';
+  return `${g}학년 학생이 궁금해하고 있어요. ${gradeNote}
 ${ageTip}
 
 질문: "${prob}"
