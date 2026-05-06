@@ -1019,9 +1019,11 @@ function getStudents(){return JSON.parse(localStorage.getItem('sp_students')||'[
 function saveStudents(arr){localStorage.setItem('sp_students',JSON.stringify(arr));}
 function getStudent(name){const n=normName(name);return getStudents().find(s=>normName(s.name)===n)||null;}
 function upsertStudent(st){
+  const n=normName(st.name||'');
+  if(!n||n==='선생님') return; // 선생님은 학생 목록에 추가 금지
   const arr=getStudents();
-  const idx=arr.findIndex(s=>s.name===st.name);
-  if(idx>=0) arr[idx]={...arr[idx],...st}; else arr.push(st);
+  const idx=arr.findIndex(s=>normName(s.name)===n);
+  if(idx>=0) arr[idx]={...arr[idx],...st}; else arr.push({...st,name:n});
   saveStudents(arr);
 }
 
@@ -1176,7 +1178,8 @@ function adminGoMain(){
 
 function teacherGoMain(){
   // 선생님 설정 화면에서 수업 도우미로 진입
-  S.studentName='선생님';
+  S.isTeacher=true;
+  S.studentName=null; // 선생님은 학생 목록에 저장 안 함
   S.isDemo=false;
   if(!S.key){showToast('⚠️ API 키를 먼저 저장해주세요!');return;}
   initMain();
@@ -1495,7 +1498,7 @@ function initMain(){
 // ══════════════════════════
 function selGrade(g){
   S.grade=g;
-  if(S.studentName) upsertStudent({name:S.studentName,grade:g});
+  if(S.studentName && !S.isTeacher) upsertStudent({name:S.studentName,grade:g});
   document.querySelectorAll('.g-btn').forEach((b,i)=>b.classList.toggle('active',i+1===g));
   document.getElementById('quick-topics').innerHTML=(TOPICS[g]||[]).map(t=>
     `<button class="chip" onclick="quickTopic('${t}')">${t}</button>`).join('');
