@@ -427,6 +427,48 @@ window._fbGetTeacherKey = async function(){
 
 console.log('✅ Firebase Firestore 연결 완료');
 </script>
+
+<!-- 수풀AI Firebase Functions URL 설정 -->
+<script>
+// API 키는 서버(Firebase Functions)에만 있음 — 브라우저에는 없음
+const FUNCTIONS_BASE = 'https://asia-northeast3-supul-ai.cloudfunctions.net';
+
+// Firebase Functions 통해 Claude API 호출하는 헬퍼
+async function callClaudeViaServer({ systemPrompt, userContent, model, maxTokens, grade, problem, htype, isTeacher }) {
+  const classCode = getClassCode();
+  const studentName = S.studentName || null;
+  const res = await fetch(FUNCTIONS_BASE + '/callClaudeAPI', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      classCode,
+      studentName,
+      isTeacher: isTeacher || !!S.isTeacher,
+      grade: grade || S.grade,
+      problem: problem || null,
+      htype: htype || null,
+      systemPrompt,
+      userContent,
+      model: model || 'claude-opus-4-6',
+      maxTokens: maxTokens || 2800
+    })
+  });
+  const data = await res.json();
+  if (!res.ok || data.error) throw new Error(data.error || '서버 오류');
+  // 남은 횟수 표시 (있을 경우)
+  if (typeof data.remaining === 'number') {
+    updateUsageDisplay(data.remaining);
+  }
+  return data;
+}
+
+function updateUsageDisplay(remaining) {
+  const el = document.getElementById('usage-remaining');
+  if (!el) return;
+  el.textContent = `오늘 ${remaining}회 남음`;
+  el.style.color = remaining <= 3 ? '#e74c3c' : 'var(--mid)';
+}
+</script>
 </head>
 <body>
 
@@ -1175,18 +1217,8 @@ function checkAdminPin(){
   if(pin===getAdminCode()){
     closeAdminAuth();
     // Firebase에서 API 키 자동 로드 (새 기기에서도 코드 입력만으로 사용 가능)
-    if(window._fbGetTeacherKey && !S.key){
-      window._fbGetTeacherKey().then(function(apiKey){
-        if(apiKey){
-          S.key=apiKey;
-          localStorage.setItem('sp_key',apiKey);
-          console.log('✅ Firebase에서 API 키 자동 로드 완료');
-        }
-        openAdminPanel();
-      });
-    } else {
-      openAdminPanel();
-    }
+    // 🔒 API 키는 서버에 있음 — 브라우저 자동 로드 불필요
+    openAdminPanel();
   } else {
     document.getElementById('admin-pin-err').textContent='코드가 틀렸어요. 다시 확인해주세요 🔒';
     document.getElementById('admin-pin').value='';
@@ -1195,10 +1227,9 @@ function checkAdminPin(){
 }
 function openAdminPanel(){
   // API 키 상태 표시
-  const k=S.key;
   document.getElementById('admin-apikey').value='';
-  document.getElementById('admin-key-status').textContent=k?`✅ API 키 등록됨 (${k.slice(0,12)}...)`:'⚠️ API 키 없음';
-  document.getElementById('admin-key-status').style.color=k?'#2d7a4f':'#dc2626';
+  document.getElementById('admin-key-status').textContent='🔒 API 키는 서버에 저장됨 — 새 키 입력 시 덮어쓰기';
+  document.getElementById('admin-key-status').style.color='#2d7a4f';
   // 선생님 코드 현황
   const code=getClassCode();
   document.getElementById('admin-teacher-info').innerHTML=`
@@ -1286,17 +1317,27 @@ function renderAdminStats(){
       📚 누적 학습 총 <strong>${allHist.length}건</strong>
     </div>`;
 }
-// 관리자 전용 저장
-function adminSaveKey(){
+// 관리자 전용 저장 — Firebase Functions 서버에 저장 (브라우저 localStorage 사용 안 함)
+async function adminSaveKey(){
   const k=document.getElementById('admin-apikey').value.trim();
   if(!k){showToast('API 키를 입력해주세요');return;}
-  S.key=k;localStorage.setItem('sp_key',k);
-  // Firebase에도 저장 → 다른 기기에서 코드만 입력해도 자동 로드
-  if(window._fbSaveTeacherKey) window._fbSaveTeacherKey(k);
-  document.getElementById('admin-key-status').textContent=`✅ 저장 완료 (${k.slice(0,12)}...)`;
-  document.getElementById('admin-key-status').style.color='#2d7a4f';
-  document.getElementById('admin-apikey').value='';
-  showToast('API 키 저장 완료! ✅');
+  const adminCode=getAdminCode();
+  const classCode=getClassCode();
+  try{
+    const res=await fetch(FUNCTIONS_BASE+'/setApiKey',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({adminCode,apiKey:k,classCode})
+    });
+    const data=await res.json();
+    if(!res.ok) throw new Error(data.error||'저장 실패');
+    document.getElementById('admin-key-status').textContent='✅ 서버에 저장 완료 — 모든 기기에서 사용 가능';
+    document.getElementById('admin-key-status').style.color='#2d7a4f';
+    document.getElementById('admin-apikey').value='';
+    showToast('API 키가 서버에 안전하게 저장됐어요 ✅');
+  }catch(e){
+    showToast('저장 실패: '+e.message);
+  }
 }
 function toggleShowKey(){
   const inp=document.getElementById('admin-apikey');
@@ -1326,7 +1367,7 @@ function resetStudents(){
 function resetAll(){
   if(!confirm('⚠️ API 키, 학생, 학습기록 모두 초기화됩니다. 정말 진행할까요?'))return;
   clearAllStudentHist();
-  ['sp_key','sp_students','sp_class_code','sp_stars','sp_school'].forEach(k=>localStorage.removeItem(k));
+  ['sp_students','sp_class_code','sp_stars','sp_school'].forEach(k=>localStorage.removeItem(k)); // sp_key 제거 — API 키는 서버에 있음
   S.key='';
   showToast('전체 초기화 완료');
   showScreen('s-setup');
@@ -1444,7 +1485,7 @@ function applyShareCode(){
 }
 
 const S={
-  key:localStorage.getItem('sp_key')||'',
+  key:'', // 🔒 API 키는 서버에만 — 브라우저 저장 안 함
   school:localStorage.getItem('sp_school')||'수풀AI',
   grade:3,
   studentName:'',
@@ -1855,11 +1896,6 @@ const LMSGS={
   easier :['더 쉬운 말을 찾고 있어요!','제일 쉬운 방법으로 다시 설명할게요 🐣'],
 };
 async function callClaude(prob,htype){
-  if(!S.key){
-    showToast('선생님이 아직 설정을 안 하셨어요. ⚙️ 버튼을 눌러 API 키를 넣어주세요!');
-    goSettings();
-    return;
-  }
   // ── 캐시 먼저 확인 ──
   if(window._fbGetCache){
     const[m,s]=LMSGS[htype]||LMSGS.concept;
@@ -1879,17 +1915,17 @@ async function callClaude(prob,htype){
     setLoad(true,m,s);
   }
   try{
-    const res=await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','x-api-key':S.key,
-        'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:'claude-opus-4-6',max_tokens:2800,
-        system:buildSys(htype),
-        messages:[{role:'user',content:buildUser(prob,htype)}]})
+    // 🔒 서버(Firebase Functions)를 통해 호출 — API 키 브라우저 노출 없음
+    const data = await callClaudeViaServer({
+      systemPrompt: buildSys(htype),
+      userContent: buildUser(prob, htype),
+      model: 'claude-opus-4-6',
+      maxTokens: 2800,
+      grade: S.grade,
+      problem: prob,
+      htype
     });
-    const data=await res.json();
-    if(data.error) throw new Error(data.error.message);
-    processRes(data.content[0].text,htype,prob);
+    processRes(data.content,htype,prob);
   }catch(e){setLoad(false);showToast('오류: '+e.message);}
 }
 
@@ -2175,10 +2211,7 @@ function submitUnderstanding(level){
 // 🧩 이해도 퀴즈 생성 (Claude API)
 // ══════════════════════════════════
 async function generateUnderstandingQuiz(understandingLevel){
-  if(!S.key){
-    document.getElementById('quiz-loading').innerHTML='<span style="color:#e74c3c;">⚠️ API 키가 없어요</span>';
-    return;
-  }
+  // 🔒 API 키 불필요 — 서버 프록시 사용
   const body=document.querySelector('.exp-body');
   const expText=body?(body.innerText||body.textContent).slice(0,1000):'';
   const cl=S.cogLevel||S.grade||3;
@@ -2210,16 +2243,15 @@ ${expText}
 - 오답도 그럴듯하게 만들 것`;
 
   try{
-    const res=await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','x-api-key':S.key,
-        'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:600,
-        messages:[{role:'user',content:prompt}]})
+    // 🔒 서버 프록시 통해 호출
+    const data = await callClaudeViaServer({
+      userContent: prompt,
+      model: 'claude-haiku-4-5-20251001',
+      maxTokens: 600,
+      grade: S.grade,
+      htype: 'quiz'
     });
-    const data=await res.json();
-    if(data.error) throw new Error(data.error.message);
-    let raw=data.content[0].text.trim();
+    let raw=data.content.trim();
     // JSON 파싱 (```json 블록 처리)
     raw=raw.replace(/^```json\s*/,'').replace(/^```\s*/,'').replace(/\s*```$/,'');
     const parsed=JSON.parse(raw);
@@ -2380,7 +2412,7 @@ async function checkStudentAns(){
   addEffort('sess_ans',2); // 🔥 직접 답 쓰기 노력
   const ans=(document.getElementById('student-ans-input')||{}).value||'';
   if(!ans.trim()){showToast('답을 먼저 써봐요! ✏️');return;}
-  if(!S.key){showToast('API 키가 없어요');return;}
+  // 🔒 API 키 불필요 — 서버 프록시 사용
   const resDiv=document.getElementById('student-ans-result');
   if(resDiv){resDiv.style.display='block';resDiv.style.background='#f0faf7';
     resDiv.innerHTML='<span style="color:var(--green);">🤔 확인 중...</span>';}
@@ -2405,16 +2437,15 @@ ${expText}
 
 ${cl<=2?'아주 짧고 쉽게, 이모지 많이 쓰세요.':cl<=4?'친절하고 명확하게.':'논리적으로 설명해주세요.'}`;
   try{
-    const res=await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','x-api-key':S.key,
-        'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:300,
-        messages:[{role:'user',content:prompt}]})
+    // 🔒 서버 프록시 통해 호출
+    const data = await callClaudeViaServer({
+      userContent: prompt,
+      model: 'claude-haiku-4-5-20251001',
+      maxTokens: 300,
+      grade: S.grade,
+      htype: 'answer_check'
     });
-    const data=await res.json();
-    if(data.error) throw new Error(data.error.message);
-    const reply=data.content[0].text;
+    const reply=data.content;
     if(resDiv){
       const isCorrect=reply.includes('맞아')||reply.includes('정확')||reply.includes('훌륭')
         ||reply.includes('완벽')||reply.includes('Good')||reply.includes('맞습니다');
@@ -3108,13 +3139,24 @@ const DEMO=`
 // ══════════════════════════
 //  설정 저장
 // ══════════════════════════
-function saveKey(){
+async function saveKey(){
   const k=(document.getElementById('set-key')||{}).value||'';
   if(!k.trim()){showToast('API 키를 입력해주세요');return;}
-  S.key=k.trim();localStorage.setItem('sp_key',S.key);
-  // Firebase에도 저장 (다른 기기에서 자동으로 불러올 수 있게)
-  if(window._fbSaveTeacherKey) window._fbSaveTeacherKey(S.key);
-  showToast('API 키 저장 완료! ✅');
+  const adminCode=getAdminCode();
+  const classCode=getClassCode();
+  try{
+    const res=await fetch(FUNCTIONS_BASE+'/setApiKey',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({adminCode,apiKey:k.trim(),classCode})
+    });
+    const data=await res.json();
+    if(!res.ok) throw new Error(data.error||'저장 실패');
+    document.getElementById('set-key').value='';
+    showToast('API 키가 서버에 안전하게 저장됐어요 ✅');
+  }catch(e){
+    showToast('저장 실패: '+e.message);
+  }
 }
 function saveSchool(){
   const sc=(document.getElementById('set-school')||{}).value||'';
@@ -3273,28 +3315,27 @@ function handleCam(input){
   input.value="";
 }
 async function processImageData(dataURL,mimeType){
-  if(!S.key){showToast("선생님이 API 키를 아직 입력 안 하셨어요 ⚙️");goSettings();return;}
+  // 🔒 API 키 불필요 — 서버 프록시 사용
   const base64=dataURL.split(",")[1];
   const mediaType=mimeType&&mimeType.startsWith("image/")?mimeType:"image/png";
   setLoad(true,"사진을 읽고 있어요!","수풀이가 문제를 확인하고 있어요 📷");
   try{
-    const res=await fetch("https://api.anthropic.com/v1/messages",{
-      method:"POST",
-      headers:{"Content-Type":"application/json","x-api-key":S.key,
-        "anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
-      body:JSON.stringify({model:"claude-opus-4-6",max_tokens:2800,
-        system:buildSys("concept"),
-        messages:[{role:"user",content:[
-          {type:"image",source:{type:"base64",media_type:mediaType,data:base64}},
-          {type:"text",text:`${S.grade}학년 학생이 사진 속 수학 문제를 이해 못 하고 있어요. 파트1(설명 HTML)과 파트2(유튜브 JSON) 두 파트를 반드시 모두 작성해주세요.`}
-        ]}]})
+    // 🔒 서버 프록시 통해 호출 (이미지는 배열 형태 userContent)
+    const data = await callClaudeViaServer({
+      systemPrompt: buildSys("concept"),
+      userContent: [
+        {type:"image",source:{type:"base64",media_type:mediaType,data:base64}},
+        {type:"text",text:`${S.grade}학년 학생이 사진 속 수학 문제를 이해 못 하고 있어요. 파트1(설명 HTML)과 파트2(유튜브 JSON) 두 파트를 반드시 모두 작성해주세요.`}
+      ],
+      model:"claude-opus-4-6",
+      maxTokens:2800,
+      grade:S.grade,
+      htype:"concept"
     });
-    const data=await res.json();
-    if(data.error) throw new Error(data.error.message);
     const prob="(사진 문제)";
     S.prob=prob;S.htype="concept";
     document.getElementById("exp-badge").textContent=`${S.grade}학년`;
-    processRes(data.content[0].text,"concept",prob);
+    processRes(data.content,"concept",prob);
   }catch(e){setLoad(false);showToast("오류: "+e.message);}
 }
 
@@ -3465,16 +3506,16 @@ ${todayProblems.length?'오늘 수풀AI 학습: '+todayProblems.join(', '):''}
 문제는 ${grade}학년 수준에 맞게, 구체적인 숫자를 사용해주세요.`;
 
   try{
-    const res=await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','x-api-key':S.key,
-        'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:'claude-opus-4-6',max_tokens:1200,
-        messages:[{role:'user',content:prompt}]})
+    // 🔒 서버 프록시 통해 호출
+    const data = await callClaudeViaServer({
+      userContent: prompt,
+      model: 'claude-opus-4-6',
+      maxTokens: 1200,
+      grade: grade,
+      htype: 'worksheet',
+      isTeacher: true
     });
-    const data=await res.json();
-    if(data.error) throw new Error(data.error.message);
-    const text=data.content[0].text;
+    const text=data.content;
     renderWorksheet(text,grade,curUnit,nextUnit,displayName,studentName,today);
   }catch(e){
     if(box) box.innerHTML=`<div style="text-align:center;padding:40px;color:red;">오류: ${e.message}</div>`;
